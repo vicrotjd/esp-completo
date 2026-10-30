@@ -1,24 +1,264 @@
--- language: Lua, target: Roblox executor (e.g. Synapse X, KRNL, Fluxus)
--- features: speed, fly, noclip, infinite jump | toggle via keybinds
+-- language: Lua, target: Roblox executor (Synapse X, KRNL, Fluxus)
+-- features: box esp, skeleton esp, name/dist labels + speed/fly/noclip/infjump
 
-local Players        = game:GetService("Players")
-local RunService     = game:GetService("RunService")
+local Players          = game:GetService("Players")
+local RunService       = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
-local lp            = Players.LocalPlayer
-local char, root, hum
+local cam              = workspace.CurrentCamera
+local lp               = Players.LocalPlayer
 
+-- ─── CONFIG ───────────────────────────────────────────────────────────────────
 local cfg = {
-    speed       = 50,
-    flySpeed    = 40,
-    jumpPower   = 100,
-    keys = {
-        fly      = Enum.KeyCode.F,
-        noclip   = Enum.KeyCode.N,
-        speed    = Enum.KeyCode.X,
-        infjump  = Enum.KeyCode.J,
-    }
+    esp = {
+        enabled   = true,
+        box       = true,
+        skeleton  = true,
+        name      = true,
+        distance  = true,
+        teamCheck = false,
+        maxDist   = 1000,
+        colors = {
+            box      = Color3.fromRGB(255, 50, 50),
+            skeleton = Color3.fromRGB(255, 255, 255),
+            name     = Color3.fromRGB(255, 255, 255),
+            dist     = Color3.fromRGB(180, 180, 180),
+        },
+    },
+    cheats = {
+        speed    = 50,
+        flySpeed = 40,
+        jumpPower= 100,
+        keys = {
+            fly     = Enum.KeyCode.F,
+            noclip  = Enum.KeyCode.N,
+            speed   = Enum.KeyCode.X,
+            infjump = Enum.KeyCode.J,
+            esp     = Enum.KeyCode.E,
+        },
+    },
 }
 
+-- ─── SKELETON CONNECTIONS ──────────────────────────────────────────────────────
+local BONES = {
+    {"Head",         "UpperTorso"},
+    {"UpperTorso",   "LowerTorso"},
+    {"UpperTorso",   "RightUpperArm"},
+    {"RightUpperArm","RightLowerArm"},
+    {"RightLowerArm","RightHand"},
+    {"UpperTorso",   "LeftUpperArm"},
+    {"LeftUpperArm", "LeftLowerArm"},
+    {"LeftLowerArm", "LeftHand"},
+    {"LowerTorso",   "RightUpperLeg"},
+    {"RightUpperLeg","RightLowerLeg"},
+    {"RightLowerLeg","RightFoot"},
+    {"LowerTorso",   "LeftUpperLeg"},
+    {"LeftUpperLeg", "LeftLowerLeg"},
+    {"LeftLowerLeg", "LeftFoot"},
+}
+
+-- ─── DRAWING POOL ─────────────────────────────────────────────────────────────
+local espObjects = {}
+
+local function newDraw(type, props)
+    local d = Drawing.new(type)
+    for k, v in pairs(props) do d[k] = v end
+    return d
+end
+
+local function clearESP(tbl)
+    for _, d in pairs(tbl) do
+        if typeof(d) == "table" then
+            for _, line in pairs(d) do pcall(function() line:Remove() end) end
+        else
+            pcall(function() d:Remove() end)
+        end
+    end
+end
+
+local function buildPool(player)
+    local obj = {}
+
+    -- box: 4 lines
+    obj.box = {}
+    for i = 1, 4 do
+        obj.box[i] = newDraw("Line", {
+            Visible   = false,
+            Color     = cfg.esp.colors.box,
+            Thickness = 1,
+        })
+    end
+
+    -- skeleton lines
+    obj.skel = {}
+    for i = 1, #BONES do
+        obj.skel[i] = newDraw("Line", {
+            Visible   = false,
+            Color     = cfg.esp.colors.skeleton,
+            Thickness = 1,
+        })
+    end
+
+    -- name label
+    obj.name = newDraw("Text", {
+        Visible    = false,
+        Color      = cfg.esp.colors.name,
+        Size       = 14,
+        Center     = true,
+        Outline    = true,
+        OutlineColor = Color3.new(0,0,0),
+        Text       = player.Name,
+    })
+
+    -- distance label
+    obj.dist = newDraw("Text", {
+        Visible    = false,
+        Color      = cfg.esp.colors.dist,
+        Size       = 12,
+        Center     = true,
+        Outline    = true,
+        OutlineColor = Color3.new(0,0,0),
+    })
+
+    espObjects[player] = obj
+end
+
+local function removePool(player)
+    if espObjects[player] then
+        clearESP(espObjects[player])
+        espObjects[player] = nil
+    end
+end
+
+-- ─── WORLD → SCREEN HELPER ────────────────────────────────────────────────────
+local function w2s(pos)
+    local sp, vis = cam:WorldToViewportPoint(pos)
+    return Vector2.new(sp.X, sp.Y), vis, sp.Z
+end
+
+-- ─── BOX DRAW (top-left, top-right, bot-right, bot-left) ──────────────────────
+local function drawBox(lines, tl, tr, br, bl)
+    local corners = {tl, tr, br, bl, tl}
+    for i = 1, 4 do
+        lines[i].From    = corners[i]
+        lines[i].To      = corners[i + 1]
+        lines[i].Visible = true
+    end
+end
+
+local function hideBox(lines)
+    for _, l in ipairs(lines) do l.Visible = false end
+end
+
+-- ─── UPDATE LOOP ──────────────────────────────────────────────────────────────
+RunService.RenderStepped:Connect(function()
+    if not cfg.esp.enabled then
+        for _, obj in pairs(espObjects) do
+            hideBox(obj.box)
+            for _, l in ipairs(obj.skel) do l.Visible = false end
+            obj.name.Visible = false
+            obj.dist.Visible = false
+        end
+        return
+    end
+
+    local myRoot = lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")
+
+    for player, obj in pairs(espObjects) do
+        local char = player.Character
+        local hide = function()
+            hideBox(obj.box)
+            for _, l in ipairs(obj.skel) do l.Visible = false end
+            obj.name.Visible = false
+            obj.dist.Visible = false
+        end
+
+        if not char then hide() continue end
+
+        local root = char:FindFirstChild("HumanoidRootPart")
+        local head = char:FindFirstChild("Head")
+        local hum  = char:FindFirstChildOfClass("Humanoid")
+
+        if not root or not head or not hum or hum.Health <= 0 then hide() continue end
+
+        -- team check
+        if cfg.esp.teamCheck and player.Team == lp.Team then hide() continue end
+
+        -- distance check
+        local dist = myRoot and (root.Position - myRoot.Position).Magnitude or 0
+        if dist > cfg.esp.maxDist then hide() continue end
+
+        local _, headVis, headZ = w2s(head.Position + Vector3.new(0, 0.7, 0))
+        if not headVis or headZ < 0 then hide() continue end
+
+        -- ── BOX ────────────────────────────────────────────────────────────────
+        if cfg.esp.box then
+            local topPos    = head.Position + Vector3.new(0, 0.7, 0)
+            local botPos    = root.Position - Vector3.new(0, 3, 0)
+            local top2d, _  = w2s(topPos)
+            local bot2d, _  = w2s(botPos)
+            local height    = math.abs(top2d.Y - bot2d.Y)
+            local width     = height * 0.5
+
+            local tl = Vector2.new(top2d.X - width, top2d.Y)
+            local tr = Vector2.new(top2d.X + width, top2d.Y)
+            local br = Vector2.new(top2d.X + width, bot2d.Y)
+            local bl = Vector2.new(top2d.X - width, bot2d.Y)
+            drawBox(obj.box, tl, tr, br, bl)
+        else
+            hideBox(obj.box)
+        end
+
+        -- ── SKELETON ───────────────────────────────────────────────────────────
+        if cfg.esp.skeleton then
+            for i, pair in ipairs(BONES) do
+                local p0 = char:FindFirstChild(pair[1])
+                local p1 = char:FindFirstChild(pair[2])
+                if p0 and p1 then
+                    local s0, v0 = w2s(p0.Position)
+                    local s1, v1 = w2s(p1.Position)
+                    obj.skel[i].From    = s0
+                    obj.skel[i].To      = s1
+                    obj.skel[i].Visible = v0 and v1
+                else
+                    obj.skel[i].Visible = false
+                end
+            end
+        else
+            for _, l in ipairs(obj.skel) do l.Visible = false end
+        end
+
+        -- ── NAME ───────────────────────────────────────────────────────────────
+        if cfg.esp.name then
+            local top2d, _ = w2s(head.Position + Vector3.new(0, 1.2, 0))
+            obj.name.Position = top2d - Vector2.new(0, 16)
+            obj.name.Visible  = true
+        else
+            obj.name.Visible = false
+        end
+
+        -- ── DISTANCE ───────────────────────────────────────────────────────────
+        if cfg.esp.distance then
+            local bot2d, _ = w2s(root.Position - Vector3.new(0, 3, 0))
+            obj.dist.Text     = string.format("[%.0fm]", dist)
+            obj.dist.Position = bot2d + Vector2.new(0, 4)
+            obj.dist.Visible  = true
+        else
+            obj.dist.Visible = false
+        end
+    end
+end)
+
+-- ─── PLAYER EVENTS ────────────────────────────────────────────────────────────
+for _, p in ipairs(Players:GetPlayers()) do
+    if p ~= lp then buildPool(p) end
+end
+Players.PlayerAdded:Connect(function(p)
+    if p ~= lp then buildPool(p) end
+end)
+Players.PlayerRemoving:Connect(removePool)
+
+-- ─── CHEATS ───────────────────────────────────────────────────────────────────
+local char, root, hum
 local state = { fly = false, noclip = false, speed = false, infjump = false }
 
 local function getChar()
@@ -26,25 +266,26 @@ local function getChar()
     root = char:WaitForChild("HumanoidRootPart")
     hum  = char:WaitForChild("Humanoid")
 end
-
 getChar()
 lp.CharacterAdded:Connect(getChar)
 
--- SPEED
-local function setSpeed(on)
-    if hum then
-        hum.WalkSpeed = on and cfg.speed or 16
-    end
-end
-
--- INFINITE JUMP
+-- infinite jump
 UserInputService.JumpRequest:Connect(function()
     if state.infjump and hum then
         hum:ChangeState(Enum.HumanoidStateType.Jumping)
     end
 end)
 
--- FLY
+-- noclip
+RunService.Stepped:Connect(function()
+    if state.noclip and char then
+        for _, p in ipairs(char:GetDescendants()) do
+            if p:IsA("BasePart") then p.CanCollide = false end
+        end
+    end
+end)
+
+-- fly
 local flyConn
 local function startFly()
     if flyConn then flyConn:Disconnect() end
@@ -61,39 +302,32 @@ local function startFly()
             flyConn:Disconnect()
             return
         end
-        local cam = workspace.CurrentCamera
+        local c   = workspace.CurrentCamera
         local dir = Vector3.zero
-        if UserInputService:IsKeyDown(Enum.KeyCode.W) then dir = dir + cam.CFrame.LookVector end
-        if UserInputService:IsKeyDown(Enum.KeyCode.S) then dir = dir - cam.CFrame.LookVector end
-        if UserInputService:IsKeyDown(Enum.KeyCode.A) then dir = dir - cam.CFrame.RightVector end
-        if UserInputService:IsKeyDown(Enum.KeyCode.D) then dir = dir + cam.CFrame.RightVector end
-        if UserInputService:IsKeyDown(Enum.KeyCode.Space) then dir = dir + Vector3.new(0,1,0) end
+        if UserInputService:IsKeyDown(Enum.KeyCode.W) then dir = dir + c.CFrame.LookVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.S) then dir = dir - c.CFrame.LookVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.A) then dir = dir - c.CFrame.RightVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.D) then dir = dir + c.CFrame.RightVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.Space)     then dir = dir + Vector3.new(0,1,0) end
         if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then dir = dir - Vector3.new(0,1,0) end
-        bp.Velocity = dir.Magnitude > 0 and dir.Unit * cfg.flySpeed or Vector3.zero
+        bp.Velocity = dir.Magnitude > 0 and dir.Unit * cfg.cheats.flySpeed or Vector3.zero
     end)
 end
 
--- NOCLIP
-RunService.Stepped:Connect(function()
-    if state.noclip and char then
-        for _, p in ipairs(char:GetDescendants()) do
-            if p:IsA("BasePart") then
-                p.CanCollide = false
-            end
-        end
-    end
-end)
-
--- TOGGLES
+-- toggles
 UserInputService.InputBegan:Connect(function(inp, gp)
     if gp then return end
     local k = inp.KeyCode
+    local c = cfg.cheats
 
-    if k == cfg.keys.speed then
+    if k == c.keys.esp then
+        cfg.esp.enabled = not cfg.esp.enabled
+
+    elseif k == c.keys.speed then
         state.speed = not state.speed
-        setSpeed(state.speed)
+        if hum then hum.WalkSpeed = state.speed and c.speed or 16 end
 
-    elseif k == cfg.keys.fly then
+    elseif k == c.keys.fly then
         state.fly = not state.fly
         if state.fly then
             hum:ChangeState(Enum.HumanoidStateType.Physics)
@@ -102,13 +336,11 @@ UserInputService.InputBegan:Connect(function(inp, gp)
             hum:ChangeState(Enum.HumanoidStateType.GettingUp)
         end
 
-    elseif k == cfg.keys.noclip then
+    elseif k == c.keys.noclip then
         state.noclip = not state.noclip
 
-    elseif k == cfg.keys.infjump then
+    elseif k == c.keys.infjump then
         state.infjump = not state.infjump
-        if hum then
-            hum.JumpPower = state.infjump and cfg.jumpPower or 50
-        end
+        if hum then hum.JumpPower = state.infjump and c.jumpPower or 50 end
     end
 end)
