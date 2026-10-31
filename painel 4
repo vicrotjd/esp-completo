@@ -1,0 +1,197 @@
+-- mica.dyy RAGE | Chams + Rage Aimbot | Xeno | ANON
+if _G.MicaDyy then pcall(_G.MicaDyy.Destroy) _G.MicaDyy = nil end
+
+local P,R,U,W,C = game:GetService("Players"),game:GetService("RunService"),game:GetService("UserInputService"),game:GetService("Workspace"),game:GetService("CoreGui")
+local LP,Cam = P.LocalPlayer,W.CurrentCamera
+
+local Cfg = {
+    ChamsEnabled = true,
+    TeamCheck    = true,
+    ChamsFill    = Color3.fromRGB(138,43,226),
+    ChamsOutline = Color3.fromRGB(255,255,255),
+    
+    AimEnabled   = true,
+    AimKey       = Enum.UserInputType.MouseButton2,
+    AimFOV       = 45,          -- FOV pequeno pra grudar na cara
+    AimPart      = "Head",      -- Head, UpperTorso, HumanoidRootPart
+    
+    PanelBg      = Color3.fromRGB(10,5,16),
+    PanelBox     = Color3.fromRGB(15,8,24),
+    PanelAccent  = Color3.fromRGB(138,43,226),
+    PanelText    = Color3.fromRGB(230,230,230),
+    PanelTextDark= Color3.fromRGB(120,120,130),
+}
+
+local highlights = {}
+local function clearHighlight(plr)
+    if highlights[plr] then
+        pcall(function() highlights[plr]:Destroy() end)
+        highlights[plr] = nil
+    end
+end
+
+local function createHighlight(plr)
+    local h = Instance.new("Highlight")
+    h.Name = "MicaCham"
+    h.FillColor = Cfg.ChamsFill
+    h.OutlineColor = Cfg.ChamsOutline
+    h.FillTransparency = 0.5
+    h.OutlineTransparency = 0
+    h.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+    h.Parent = (gethui and gethui()) or C
+    highlights[plr] = h
+    return h
+end
+
+R.RenderStepped:Connect(function()
+    for _, plr in ipairs(P:GetPlayers()) do
+        if plr == LP then continue end
+        local char = plr.Character
+        local h = highlights[plr]
+
+        if Cfg.ChamsEnabled and char and (not Cfg.TeamCheck or plr.Team ~= LP.Team) then
+            local hum = char:FindFirstChildOfClass("Humanoid")
+            if hum and hum.Health > 0 then
+                if not h then h = createHighlight(plr) end
+                h.Adornee = char
+                h.FillColor = Cfg.ChamsFill
+                h.OutlineColor = Cfg.ChamsOutline
+                h.Enabled = true
+            else
+                if h then h.Enabled = false end
+            end
+        else
+            if h then h.Enabled = false end
+        end
+    end
+end)
+
+P.PlayerRemoving:Connect(clearHighlight)
+
+local aimHeld = false
+U.InputBegan:Connect(function(i,g) if not g and i.UserInputType==Cfg.AimKey then aimHeld=true end end)
+U.InputEnded:Connect(function(i) if i.UserInputType==Cfg.AimKey then aimHeld=false end end)
+
+local function getAimTarget()
+    local m = U:GetMouseLocation()
+    local best, bd = nil, Cfg.AimFOV
+    for _, plr in ipairs(P:GetPlayers()) do
+        if plr ~= LP and (not Cfg.TeamCheck or plr.Team ~= LP.Team) then
+            local char = plr.Character
+            if char then
+                local hum = char:FindFirstChildOfClass("Humanoid")
+                local targetPart
+                if Cfg.AimPart == "Head" then targetPart = char:FindFirstChild("Head")
+                elseif Cfg.AimPart == "UpperTorso" then targetPart = char:FindFirstChild("UpperTorso") or char:FindFirstChild("Torso")
+                else targetPart = char:FindFirstChild("HumanoidRootPart") end
+                
+                if hum and hum.Health > 0 and targetPart then
+                    local sp, on = Cam:WorldToViewportPoint(targetPart.Position)
+                    if on then
+                        local d = (m - Vector2.new(sp.X, sp.Y)).Magnitude
+                        if d < bd then
+                            best = targetPart
+                            bd = d
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return best
+end
+
+R.RenderStepped:Connect(function()
+    if not Cfg.AimEnabled or not aimHeld then return end
+    local target = getAimTarget()
+    if target then
+        -- Rage: Lock instantâneo, sem lerp, sem prediction.
+        Cam.CFrame = CFrame.lookAt(Cam.CFrame.Position, target.Position)
+    end
+end)
+
+local parent = (gethui and gethui()) or C
+local old = parent:FindFirstChild("mica_dyy") if old then old:Destroy() end
+
+local gui = Instance.new("ScreenGui")
+gui.Name="mica_dyy" gui.ResetOnSpawn=false gui.IgnoreGuiInset=true gui.ZIndexBehavior=Enum.ZIndexBehavior.Sibling gui.DisplayOrder=999 gui.Parent=parent
+if protectgui then pcall(protectgui,gui) end
+if syn and syn.protect_gui then pcall(syn.protect_gui,gui) end
+
+local main=Instance.new("Frame")
+main.Size=UDim2.new(0,280,0,260) main.Position=UDim2.new(0.5,-140,0.5,-130)
+main.BackgroundColor3=Cfg.PanelBg main.BorderSizePixel=0 main.Active=true main.ClipsDescendants=true main.Parent=gui
+Instance.new("UICorner",main).CornerRadius=UDim.new(0,12)
+local st=Instance.new("UIStroke",main) st.Color=Cfg.PanelAccent st.Thickness=1.5 st.Transparency=0.3
+
+local drag,ds,sp
+main.InputBegan:Connect(function(i)
+    if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then
+        drag=true ds=i.Position sp=main.Position
+        i.Changed:Connect(function() if i.UserInputState==Enum.UserInputState.End then drag=false end end)
+    end
+end)
+U.InputChanged:Connect(function(i)
+    if drag and (i.UserInputType==Enum.UserInputType.MouseMovement or i.UserInputType==Enum.UserInputType.Touch) then
+        local dlt=i.Position-ds
+        main.Position=UDim2.new(sp.X.Scale,sp.X.Offset+dlt.X,sp.Y.Scale,sp.Y.Offset+dlt.Y)
+    end
+end)
+
+local hd=Instance.new("Frame") hd.Size=UDim2.new(1,0,0,50) hd.BackgroundTransparency=1 hd.Parent=main
+local tt=Instance.new("TextLabel") tt.Size=UDim2.new(1,0,1,0) tt.BackgroundTransparency=1 tt.Text="MICA.DYY RAGE" tt.TextColor3=Color3.fromRGB(255,255,255) tt.Font=Enum.Font.GothamBlack tt.TextSize=18 tt.Parent=hd
+local ts=Instance.new("UIStroke",tt) ts.Color=Cfg.PanelAccent ts.Thickness=1 ts.Transparency=0.5
+
+local cl=Instance.new("TextButton") cl.Size=UDim2.new(0,30,0,30) cl.Position=UDim2.new(1,-40,0.5,-15) cl.BackgroundTransparency=1 cl.Text="×" cl.TextColor3=Cfg.PanelTextDark cl.Font=Enum.Font.GothamBold cl.TextSize=24 cl.Parent=hd
+cl.MouseButton1Click:Connect(function() gui.Enabled=not gui.Enabled end)
+
+local body=Instance.new("Frame") body.Size=UDim2.new(1,-20,1,-60) body.Position=UDim2.new(0,10,0,55) body.BackgroundTransparency=1 body.Parent=main
+local sf=Instance.new("ScrollingFrame") sf.Size=UDim2.new(1,0,1,0) sf.BackgroundTransparency=1 sf.BorderSizePixel=0 sf.ScrollBarThickness=2 sf.ScrollBarImageColor3=Cfg.PanelAccent sf.CanvasSize=UDim2.new(0,0,0,0) sf.AutomaticCanvasSize=Enum.AutomaticSize.Y sf.Parent=body
+local ll=Instance.new("UIListLayout",sf) ll.Padding=UDim.new(0,6) ll.SortOrder=Enum.SortOrder.LayoutOrder
+
+local function section(txt,ord)
+    local l=Instance.new("TextLabel") l.Size=UDim2.new(1,0,0,20) l.BackgroundTransparency=1 l.Text=txt:upper() l.TextColor3=Cfg.PanelAccent l.Font=Enum.Font.GothamBold l.TextSize=11 l.TextXAlignment=Enum.TextXAlignment.Left l.LayoutOrder=ord l.Parent=sf
+end
+local function toggle(label,key,ord)
+    local r=Instance.new("Frame") r.Size=UDim2.new(1,0,0,28) r.BackgroundTransparency=1 r.LayoutOrder=ord r.Parent=sf
+    local l=Instance.new("TextLabel") l.Size=UDim2.new(1,-40,1,0) l.BackgroundTransparency=1 l.Text=label l.TextColor3=Cfg.PanelText l.Font=Enum.Font.Gotham l.TextSize=12 l.TextXAlignment=Enum.TextXAlignment.Left l.Parent=r
+    local b=Instance.new("TextButton") b.Size=UDim2.new(0,28,0,16) b.Position=UDim2.new(1,-28,0.5,-8) b.BackgroundColor3=Cfg[key] and Cfg.PanelAccent or Color3.fromRGB(30,20,45) b.Text="" b.BorderSizePixel=0 b.Parent=r
+    Instance.new("UICorner",b).CornerRadius=UDim.new(1,0)
+    local dt=Instance.new("Frame") dt.Size=UDim2.new(0,10,0,10) dt.Position=Cfg[key] and UDim2.new(1,-13,0.5,-5) or UDim2.new(0,3,0.5,-5) dt.BackgroundColor3=Color3.fromRGB(255,255,255) dt.BorderSizePixel=0 dt.Parent=b
+    Instance.new("UICorner",dt).CornerRadius=UDim.new(1,0)
+    b.MouseButton1Click:Connect(function()
+        Cfg[key]=not Cfg[key]
+        b.BackgroundColor3=Cfg[key] and Cfg.PanelAccent or Color3.fromRGB(30,20,45)
+        dt.Position=Cfg[key] and UDim2.new(1,-13,0.5,-5) or UDim2.new(0,3,0.5,-5)
+    end)
+end
+local function slider(label,key,mn,mx,ord)
+    local r=Instance.new("Frame") r.Size=UDim2.new(1,0,0,38) r.BackgroundTransparency=1 r.LayoutOrder=ord r.Parent=sf
+    local l=Instance.new("TextLabel") l.Size=UDim2.new(1,0,0,14) l.BackgroundTransparency=1 l.Text=label..": "..tostring(Cfg[key]) l.TextColor3=Cfg.PanelText l.Font=Enum.Font.Gotham l.TextSize=12 l.TextXAlignment=Enum.TextXAlignment.Left l.Parent=r
+    local tr=Instance.new("Frame") tr.Size=UDim2.new(1,-10,0,4) tr.Position=UDim2.new(0,0,0,22) tr.BackgroundColor3=Color3.fromRGB(30,20,45) tr.BorderSizePixel=0 tr.Parent=r
+    Instance.new("UICorner",tr).CornerRadius=UDim.new(1,0)
+    local fl=Instance.new("Frame") fl.Size=UDim2.new((Cfg[key]-mn)/(mx-mn),0,1,0) fl.BackgroundColor3=Cfg.PanelAccent fl.BorderSizePixel=0 fl.Parent=tr
+    Instance.new("UICorner",fl).CornerRadius=UDim.new(1,0)
+    local drg=false
+    local function setX(mx_)
+        local ax=tr.AbsolutePosition.X local w=tr.AbsoluteSize.X
+        local f=math.clamp((mx_-ax)/w,0,1) local v=math.floor(mn+f*(mx-mn))
+        Cfg[key]=v l.Text=label..": "..tostring(v) fl.Size=UDim2.new(f,0,1,0)
+    end
+    tr.InputBegan:Connect(function(i) if i.UserInputType==Enum.UserInputType.MouseButton1 then drg=true setX(i.Position.X) end end)
+    U.InputChanged:Connect(function(i) if drg and i.UserInputType==Enum.UserInputType.MouseMovement then setX(i.Position.X) end end)
+    U.InputEnded:Connect(function(i) if i.UserInputType==Enum.UserInputType.MouseButton1 then drg=false end end)
+end
+
+local o=1
+section("CHAMS",o) o=o+1
+toggle("Enable Chams","ChamsEnabled",o) o=o+1
+
+section("AIMBOT RAGE",o) o=o+1
+toggle("Enable Aimbot","AimEnabled",o) o=o+1
+slider("FOV","AimFOV",10,200,o) o=o+1
+
+_G.MicaDyy = {Destroy=function()
+    for plr in pairs(highlights) do clearHighlight(plr) end
+    if gui then gui:Destroy() end
+end}
