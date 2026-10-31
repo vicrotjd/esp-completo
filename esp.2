@@ -1,0 +1,641 @@
+-- Roblox ESP | Xeno | Panel "mica.dyy" | Instance GUI + Drawing
+-- Load: paste into Xeno, execute. Re-execute safe (self-cleanup via _G).
+
+local Players    = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UIS        = game:GetService("UserInputService")
+local Workspace  = game:GetService("Workspace")
+local Tween      = game:GetService("TweenService")
+
+local Camera      = Workspace.CurrentCamera
+local LocalPlayer = Players.LocalPlayer
+
+-- ============================================================
+-- CONFIG
+-- ============================================================
+local Config = {
+    Enabled             = true,
+    TeamCheck           = true,
+    VisibleCheck        = false,
+    MaxDistance         = 1000,
+
+    Box2D               = true,
+    Box3D               = false,
+    Skeleton            = false,
+    Line                = true,
+    HealthBarVertical   = true,
+    HealthBarHorizontal = false,
+    NameTag             = true,
+    DistanceText        = true,
+    DistanceAxes        = false,
+    FillBox             = false,
+    HeadDot             = false,
+
+    BoxColor            = Color3.fromRGB(255, 255, 255),
+    Box3DColor          = Color3.fromRGB(255, 200, 80),
+    SkeletonColor       = Color3.fromRGB(120, 255, 120),
+    LineColor           = Color3.fromRGB(255, 255, 255),
+    NameColor           = Color3.fromRGB(255, 255, 255),
+    DistanceColor       = Color3.fromRGB(200, 200, 200),
+    PanelAccent         = Color3.fromRGB(80, 200, 255),
+    TextSize            = 13,
+    TextFont            = 2,
+    TextOutline         = true,
+    TextTransparency    = 0,
+}
+
+-- ============================================================
+-- DRAWING HELPERS
+-- ============================================================
+local function newDrawing(class, props)
+    local d = Drawing.new(class)
+    for k, v in pairs(props or {}) do d[k] = v end
+    return d
+end
+
+local function healthColor(frac)
+    frac = math.clamp(frac, 0, 1)
+    return Color3.new(1 - frac, frac, 0)
+end
+
+local function getCharacterParts(plr)
+    local char = plr.Character
+    if not char then return nil end
+    local hrp  = char:FindFirstChild("HumanoidRootPart")
+    local head = char:FindFirstChild("Head")
+    local hum  = char:FindFirstChildOfClass("Humanoid")
+    if not (hrp and head and hum) then return nil end
+    if hum.Health <= 0 then return nil end
+    return char, hrp, head, hum
+end
+
+local function visible(plr, hrp)
+    if not Config.VisibleCheck then return true end
+    local origin = Camera.CFrame.Position
+    local dir    = hrp.Position - origin
+    local ray    = Ray.new(origin, dir)
+    local hit    = Workspace:FindPartOnRayWithIgnoreList(ray, {LocalPlayer.Character, hrp.Parent})
+    return hit == nil or hit.Parent == hrp.Parent or hit:IsDescendantOf(hrp.Parent)
+end
+
+local function screenPoint(pos)
+    local sp, onScreen = Camera:WorldToViewportPoint(pos)
+    if not onScreen then return nil end
+    return Vector2.new(sp.X, sp.Y)
+end
+
+local SKEL_R6 = {
+    {"Head","Torso"},{"Torso","HumanoidRootPart"},
+    {"Torso","Left Arm"},{"Torso","Right Arm"},
+    {"Torso","Left Leg"},{"Torso","Right Leg"},
+}
+local SKEL_R15 = {
+    {"Head","UpperTorso"},{"UpperTorso","LowerTorso"},
+    {"UpperTorso","LeftUpperArm"},{"LeftUpperArm","LeftLowerArm"},{"LeftLowerArm","LeftHand"},
+    {"UpperTorso","RightUpperArm"},{"RightUpperArm","RightLowerArm"},{"RightLowerArm","RightHand"},
+    {"LowerTorso","LeftUpperLeg"},{"LeftUpperLeg","LeftLowerLeg"},{"LeftLowerLeg","LeftFoot"},
+    {"LowerTorso","RightUpperLeg"},{"RightUpperLeg","RightLowerLeg"},{"RightLowerLeg","RightFoot"},
+}
+
+-- ============================================================
+-- PER-PLAYER DRAWING REGISTRY
+-- ============================================================
+local esp = {}
+
+local function ensureEsp(plr)
+    if esp[plr] then return esp[plr] end
+    local e = {
+        box2d    = newDrawing("Square", { Thickness = 1, Filled = false, Visible = false, Color = Config.BoxColor }),
+        boxFill  = newDrawing("Square", { Thickness = 1, Filled = true,  Visible = false, Color = Config.BoxColor, Transparency = 0.75 }),
+        box3d    = {},
+        skeleton = {},
+        line     = newDrawing("Line",   { Thickness = 1, Visible = false, Color = Config.LineColor }),
+        hpV      = newDrawing("Square", { Thickness = 1, Filled = true,  Visible = false }),
+        hpVbg    = newDrawing("Square", { Thickness = 1, Filled = true,  Visible = false, Color = Color3.new(0,0,0) }),
+        hpH      = newDrawing("Square", { Thickness = 1, Filled = true,  Visible = false }),
+        hpHbg    = newDrawing("Square", { Thickness = 1, Filled = true,  Visible = false, Color = Color3.new(0,0,0) }),
+        headDot  = newDrawing("Circle", { Thickness = 1, Filled = true,  Visible = false, Color = Config.BoxColor }),
+        name     = newDrawing("Text",   { Size = Config.TextSize, Font = Config.TextFont, Center = true, Outline = Config.TextOutline, Visible = false, Color = Config.NameColor, Transparency = Config.TextTransparency }),
+        dist     = newDrawing("Text",   { Size = Config.TextSize, Font = Config.TextFont, Center = true, Outline = Config.TextOutline, Visible = false, Color = Config.DistanceColor, Transparency = Config.TextTransparency }),
+        distX    = newDrawing("Text",   { Size = Config.TextSize - 2, Font = Config.TextFont, Center = true, Outline = Config.TextOutline, Visible = false, Color = Config.DistanceColor, Transparency = Config.TextTransparency }),
+        distZ    = newDrawing("Text",   { Size = Config.TextSize - 2, Font = Config.TextFont, Center = true, Outline = Config.TextOutline, Visible = false, Color = Config.DistanceColor, Transparency = Config.TextTransparency }),
+    }
+    esp[plr] = e
+    return e
+end
+
+local function clearEsp(plr)
+    local e = esp[plr]
+    if not e then return end
+    for _, v in pairs(e) do
+        if typeof(v) == "Drawing" then v:Remove()
+        elseif type(v) == "table" then
+            for _, l in pairs(v) do if typeof(l) == "Drawing" then l:Remove() end end
+        end
+    end
+    esp[plr] = nil
+end
+
+local function hideAll(e)
+    if not e then return end
+    for _, v in pairs(e) do
+        if typeof(v) == "Drawing" then v.Visible = false
+        elseif type(v) == "table" then
+            for _, l in pairs(v) do if typeof(l) == "Drawing" then l.Visible = false end end
+        end
+    end
+end
+
+-- ============================================================
+-- RENDER
+-- ============================================================
+local function renderPlayer(plr)
+    if plr == LocalPlayer then return end
+    local char, hrp, head, hum = getCharacterParts(plr)
+    local e = esp[plr]
+
+    -- Personagem morto ou removido
+    if not char then
+        if e then hideAll(e) end
+        return
+    end
+
+    if Config.TeamCheck and LocalPlayer.Team and plr.Team == LocalPlayer.Team then
+        if e then hideAll(e) end
+        return
+    end
+
+    local myPos = (LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart"))
+                  and LocalPlayer.Character.HumanoidRootPart.Position
+                  or Camera.CFrame.Position
+    local dist = (hrp.Position - myPos).Magnitude
+
+    if Config.MaxDistance > 0 and dist > Config.MaxDistance then
+        if e then hideAll(e) end
+        return
+    end
+
+    if not visible(plr, hrp) then
+        if e then hideAll(e) end
+        return
+    end
+
+    e = ensureEsp(plr)
+
+    local headScreen = screenPoint(head.Position)
+    local hrpScreen  = screenPoint(hrp.Position)
+    local headTop    = screenPoint(head.Position + Vector3.new(0, head.Size.Y * 0.5, 0))
+    local feetBot    = screenPoint(hrp.Position - Vector3.new(0, hrp.Size.Y * 0.5 + 2.4, 0))
+
+    -- Fora do campo de visão (tela)
+    if not (headScreen and hrpScreen and headTop and feetBot) then
+        hideAll(e)
+        return
+    end
+
+    local x = math.min(headScreen.X, feetBot.X) - 6
+    local y = headTop.Y - 4
+    local w = math.max(math.abs(headScreen.X - feetBot.X) + 12, 24)
+    local h = feetBot.Y - headTop.Y + 8
+
+    -- BOX 2D
+    e.box2d.Visible = Config.Box2D
+    e.boxFill.Visible = Config.Box2D and Config.FillBox
+    if Config.Box2D then
+        e.box2d.Size = Vector2.new(w, h); e.box2d.Position = Vector2.new(x, y); e.box2d.Color = Config.BoxColor
+        if Config.FillBox then
+            e.boxFill.Size = Vector2.new(w, h); e.boxFill.Position = Vector2.new(x, y); e.boxFill.Color = Config.BoxColor
+        end
+    end
+
+    -- BOX 3D
+    local corners3 = {
+        Vector3.new( hrp.Size.X/2,  hrp.Size.Y/2,  hrp.Size.Z/2),
+        Vector3.new(-hrp.Size.X/2,  hrp.Size.Y/2,  hrp.Size.Z/2),
+        Vector3.new(-hrp.Size.X/2, -hrp.Size.Y/2,  hrp.Size.Z/2),
+        Vector3.new( hrp.Size.X/2, -hrp.Size.Y/2,  hrp.Size.Z/2),
+        Vector3.new( hrp.Size.X/2,  hrp.Size.Y/2, -hrp.Size.Z/2),
+        Vector3.new(-hrp.Size.X/2,  hrp.Size.Y/2, -hrp.Size.Z/2),
+        Vector3.new(-hrp.Size.X/2, -hrp.Size.Y/2, -hrp.Size.Z/2),
+        Vector3.new( hrp.Size.X/2, -hrp.Size.Y/2, -hrp.Size.Z/2),
+    }
+    local edges = {{1,2},{2,3},{3,4},{4,1},{5,6},{6,7},{7,8},{8,5},{1,5},{2,6},{3,7},{4,8}}
+    if #e.box3d == 0 then
+        for i = 1, 12 do e.box3d[i] = newDrawing("Line", { Thickness = 1, Visible = false, Color = Config.Box3DColor }) end
+    end
+    for i, ed in ipairs(edges) do
+        local line = e.box3d[i]
+        if Config.Box3D then
+            local a = screenPoint(hrp.CFrame:PointToWorldSpace(corners3[ed[1]]))
+            local b = screenPoint(hrp.CFrame:PointToWorldSpace(corners3[ed[2]]))
+            if a and b then line.From = a; line.To = b; line.Visible = true; line.Color = Config.Box3DColor
+            else line.Visible = false end
+        else line.Visible = false end
+    end
+
+    -- SKELETON
+    local skel = (hum.RigType == Enum.HumanoidRigType.R15) and SKEL_R15 or SKEL_R6
+    if #e.skeleton == 0 then
+        for i = 1, #skel do
+            e.skeleton[i] = newDrawing("Line", { Thickness = 1.5, Visible = false, Color = Config.SkeletonColor })
+        end
+    end
+    for i, pair in ipairs(skel) do
+        local line = e.skeleton[i]
+        if Config.Skeleton then
+            local p1, p2 = char:FindFirstChild(pair[1]), char:FindFirstChild(pair[2])
+            if p1 and p2 then
+                local a, b = screenPoint(p1.Position), screenPoint(p2.Position)
+                if a and b then line.From = a; line.To = b; line.Visible = true; line.Color = Config.SkeletonColor
+                else line.Visible = false end
+            else line.Visible = false end
+        else line.Visible = false end
+    end
+
+    -- LINE
+    e.line.Visible = Config.Line
+    if Config.Line then
+        e.line.From = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y)
+        e.line.To   = Vector2.new(x + w/2, y + h)
+        e.line.Color = Config.LineColor
+    end
+
+    -- HEALTH
+    local frac = math.clamp(hum.Health / hum.MaxHealth, 0, 1)
+    local col  = healthColor(frac)
+
+    e.hpVbg.Visible = Config.HealthBarVertical
+    e.hpV.Visible   = Config.HealthBarVertical
+    if Config.HealthBarVertical then
+        local barX, barW = x - 6, 3
+        e.hpVbg.Size = Vector2.new(barW, h); e.hpVbg.Position = Vector2.new(barX, y)
+        local fillH = h * frac
+        e.hpV.Size = Vector2.new(barW, fillH); e.hpV.Position = Vector2.new(barX, y + h - fillH); e.hpV.Color = col
+    end
+    e.hpHbg.Visible = Config.HealthBarHorizontal
+    e.hpH.Visible   = Config.HealthBarHorizontal
+    if Config.HealthBarHorizontal then
+        local barY = y + h + 4
+        e.hpHbg.Size = Vector2.new(w, 3); e.hpHbg.Position = Vector2.new(x, barY)
+        e.hpH.Size = Vector2.new(w * frac, 3); e.hpH.Position = Vector2.new(x, barY); e.hpH.Color = col
+    end
+
+    -- HEAD DOT
+    e.headDot.Visible = Config.HeadDot
+    if Config.HeadDot then
+        e.headDot.Position = Vector2.new(headScreen.X, headScreen.Y)
+        e.headDot.Radius = 3
+        e.headDot.Color = Config.BoxColor
+    end
+
+    -- NAME
+    e.name.Visible = Config.NameTag
+    if Config.NameTag then
+        e.name.Text = plr.DisplayName .. " (@" .. plr.Name .. ")"
+        e.name.Position = Vector2.new(x + w/2, y - 16)
+        e.name.Color = Config.NameColor
+    end
+
+    -- DISTANCE
+    e.dist.Visible = Config.DistanceText
+    if Config.DistanceText then
+        e.dist.Text = string.format("[%d studs]", math.floor(dist))
+        e.dist.Position = Vector2.new(x + w/2, y + h + 6)
+        e.dist.Color = Config.DistanceColor
+    end
+    e.distX.Visible = Config.DistanceAxes
+    e.distZ.Visible = Config.DistanceAxes
+    if Config.DistanceAxes then
+        local dx = math.abs(hrp.Position.X - myPos.X)
+        local dz = math.abs(hrp.Position.Z - myPos.Z)
+        e.distX.Text = string.format("X:%d", math.floor(dx))
+        e.distX.Position = Vector2.new(x + w/2, y + h + 22)
+        e.distZ.Text = string.format("Z:%d", math.floor(dz))
+        e.distZ.Position = Vector2.new(x + w/2, y + h + 34)
+    end
+end
+
+-- ============================================================
+-- PANEL
+-- ============================================================
+local function buildPanel()
+    local parent = (gethui and gethui()) or game:GetService("CoreGui")
+
+    local gui = Instance.new("ScreenGui")
+    gui.Name = "mica_dyy"
+    gui.ResetOnSpawn = false
+    gui.IgnoreGuiInset = true
+    gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    gui.Parent = parent
+
+    if protectgui then pcall(protectgui, gui) end
+    if syn and syn.protect_gui then pcall(syn.protect_gui, gui) end
+
+    local main = Instance.new("Frame")
+    main.Name = "Main"
+    main.Size = UDim2.new(0, 260, 0, 420)
+    main.Position = UDim2.new(0, 40, 0, 40)
+    main.BackgroundColor3 = Color3.fromRGB(20, 20, 24)
+    main.BorderSizePixel = 0
+    main.Active = true
+    main.ClipsDescendants = true
+    main.Parent = gui
+
+    local mainCorner = Instance.new("UICorner", main)
+    mainCorner.CornerRadius = UDim.new(0, 8)
+
+    local stroke = Instance.new("UIStroke", main)
+    stroke.Color = Config.PanelAccent
+    stroke.Thickness = 1
+    stroke.Transparency = 0.4
+
+    local header = Instance.new("Frame")
+    header.Name = "Header"
+    header.Size = UDim2.new(1, 0, 0, 36)
+    header.BackgroundColor3 = Color3.fromRGB(28, 28, 34)
+    header.BorderSizePixel = 0
+    header.Parent = main
+    local hCorner = Instance.new("UICorner", header)
+    hCorner.CornerRadius = UDim.new(0, 8)
+
+    local title = Instance.new("TextLabel")
+    title.Size = UDim2.new(1, -70, 1, 0)
+    title.Position = UDim2.new(0, 12, 0, 0)
+    title.BackgroundTransparency = 1
+    title.Text = "mica.dyy"
+    title.TextColor3 = Config.PanelAccent
+    title.Font = Enum.Font.GothamBold
+    title.TextSize = 16
+    title.TextXAlignment = Enum.TextXAlignment.Left
+    title.Parent = header
+
+    local collapse = Instance.new("TextButton")
+    collapse.Size = UDim2.new(0, 26, 0, 26)
+    collapse.Position = UDim2.new(1, -32, 0, 5)
+    collapse.BackgroundColor3 = Color3.fromRGB(40, 40, 48)
+    collapse.Text = "–"
+    collapse.TextColor3 = Color3.fromRGB(220, 220, 220)
+    collapse.Font = Enum.Font.GothamBold
+    collapse.TextSize = 16
+    collapse.BorderSizePixel = 0
+    collapse.Parent = header
+    local cCorner = Instance.new("UICorner", collapse)
+    cCorner.CornerRadius = UDim.new(0, 5)
+
+    local master = Instance.new("TextButton")
+    master.Size = UDim2.new(0, 52, 0, 22)
+    master.Position = UDim2.new(1, -92, 0, 7)
+    master.BackgroundColor3 = Color3.fromRGB(0, 170, 80)
+    master.Text = "ON"
+    master.TextColor3 = Color3.fromRGB(255, 255, 255)
+    master.Font = Enum.Font.GothamBold
+    master.TextSize = 12
+    master.BorderSizePixel = 0
+    master.Parent = header
+    local mCorner = Instance.new("UICorner", master)
+    mCorner.CornerRadius = UDim.new(0, 11)
+
+    local body = Instance.new("ScrollingFrame")
+    body.Name = "Body"
+    body.Size = UDim2.new(1, -12, 1, -46)
+    body.Position = UDim2.new(0, 6, 0, 42)
+    body.BackgroundTransparency = 1
+    body.BorderSizePixel = 0
+    body.ScrollBarThickness = 4
+    body.ScrollBarImageColor3 = Config.PanelAccent
+    body.CanvasSize = UDim2.new(0, 0, 0, 0)
+    body.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    body.Parent = main
+
+    local list = Instance.new("UIListLayout", body)
+    list.Padding = UDim.new(0, 4)
+    list.SortOrder = Enum.SortOrder.LayoutOrder
+
+    local function section(text, order)
+        local lbl = Instance.new("TextLabel")
+        lbl.Size = UDim2.new(1, 0, 0, 22)
+        lbl.BackgroundTransparency = 1
+        lbl.Text = text:upper()
+        lbl.TextColor3 = Config.PanelAccent
+        lbl.Font = Enum.Font.GothamBold
+        lbl.TextSize = 11
+        lbl.TextXAlignment = Enum.TextXAlignment.Left
+        lbl.LayoutOrder = order
+        lbl.Parent = body
+        return lbl
+    end
+
+    local function toggleRow(label, key, order)
+        local row = Instance.new("Frame")
+        row.Size = UDim2.new(1, 0, 0, 28)
+        row.BackgroundColor3 = Color3.fromRGB(30, 30, 36)
+        row.BorderSizePixel = 0
+        row.LayoutOrder = order
+        row.Parent = body
+        local rc = Instance.new("UICorner", row)
+        rc.CornerRadius = UDim.new(0, 5)
+
+        local lbl = Instance.new("TextLabel")
+        lbl.Size = UDim2.new(1, -50, 1, 0)
+        lbl.Position = UDim2.new(0, 10, 0, 0)
+        lbl.BackgroundTransparency = 1
+        lbl.Text = label
+        lbl.TextColor3 = Color3.fromRGB(230, 230, 230)
+        lbl.Font = Enum.Font.Gotham
+        lbl.TextSize = 12
+        lbl.TextXAlignment = Enum.TextXAlignment.Left
+        lbl.Parent = row
+
+        local btn = Instance.new("TextButton")
+        btn.Size = UDim2.new(0, 38, 0, 18)
+        btn.Position = UDim2.new(1, -46, 0.5, -9)
+        btn.BackgroundColor3 = Config[key] and Color3.fromRGB(0, 170, 80) or Color3.fromRGB(60, 60, 70)
+        btn.Text = Config[key] and "ON" or "OFF"
+        btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+        btn.Font = Enum.Font.GothamBold
+        btn.TextSize = 10
+        btn.BorderSizePixel = 0
+        btn.Parent = row
+        local bc = Instance.new("UICorner", btn)
+        bc.CornerRadius = UDim.new(0, 9)
+
+        btn.MouseButton1Click:Connect(function()
+            Config[key] = not Config[key]
+            btn.BackgroundColor3 = Config[key] and Color3.fromRGB(0, 170, 80) or Color3.fromRGB(60, 60, 70)
+            btn.Text = Config[key] and "ON" or "OFF"
+        end)
+
+        return row, btn
+    end
+
+    local function sliderRow(label, key, minVal, maxVal, order)
+        local row = Instance.new("Frame")
+        row.Size = UDim2.new(1, 0, 0, 40)
+        row.BackgroundColor3 = Color3.fromRGB(30, 30, 36)
+        row.BorderSizePixel = 0
+        row.LayoutOrder = order
+        row.Parent = body
+        local rc = Instance.new("UICorner", row)
+        rc.CornerRadius = UDim.new(0, 5)
+
+        local lbl = Instance.new("TextLabel")
+        lbl.Size = UDim2.new(1, -20, 0, 16)
+        lbl.Position = UDim2.new(0, 10, 0, 2)
+        lbl.BackgroundTransparency = 1
+        lbl.Text = label .. ": " .. tostring(Config[key])
+        lbl.TextColor3 = Color3.fromRGB(230, 230, 230)
+        lbl.Font = Enum.Font.Gotham
+        lbl.TextSize = 12
+        lbl.TextXAlignment = Enum.TextXAlignment.Left
+        lbl.Parent = row
+
+        local track = Instance.new("Frame")
+        track.Size = UDim2.new(1, -20, 0, 5)
+        track.Position = UDim2.new(0, 10, 0, 24)
+        track.BackgroundColor3 = Color3.fromRGB(60, 60, 70)
+        track.BorderSizePixel = 0
+        track.Parent = row
+        local tc = Instance.new("UICorner", track)
+        tc.CornerRadius = UDim.new(1, 0)
+
+        local fill = Instance.new("Frame")
+        fill.Size = UDim2.new((Config[key] - minVal) / (maxVal - minVal), 0, 1, 0)
+        fill.BackgroundColor3 = Config.PanelAccent
+        fill.BorderSizePixel = 0
+        fill.Parent = track
+        local fc = Instance.new("UICorner", fill)
+        fc.CornerRadius = UDim.new(1, 0)
+
+        local dragging = false
+        local function setFromX(mx)
+            local abs = track.AbsolutePosition.X
+            local w   = track.AbsoluteSize.X
+            local f   = math.clamp((mx - abs) / w, 0, 1)
+            local v   = math.floor(minVal + f * (maxVal - minVal))
+            Config[key] = v
+            lbl.Text = label .. ": " .. tostring(v)
+            fill.Size = UDim2.new(f, 0, 1, 0)
+        end
+
+        track.InputBegan:Connect(function(inp)
+            if inp.UserInputType == Enum.UserInputType.MouseButton1 then
+                dragging = true; setFromX(inp.Position.X)
+            end
+        end)
+        UIS.InputChanged:Connect(function(inp)
+            if dragging and inp.UserInputType == Enum.UserInputType.MouseMovement then
+                setFromX(inp.Position.X)
+            end
+        end)
+        UIS.InputEnded:Connect(function(inp)
+            if inp.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end
+        end)
+    end
+
+    local order = 0
+    section("Render", order); order += 1
+    toggleRow("Box 2D",          "Box2D",             order); order += 1
+    toggleRow("Fill Box",        "FillBox",           order); order += 1
+    toggleRow("Box 3D",          "Box3D",             order); order += 1
+    toggleRow("Skeleton",        "Skeleton",          order); order += 1
+    toggleRow("Tracers (Line)",  "Line",              order); order += 1
+    toggleRow("Head Dot",        "HeadDot",           order); order += 1
+
+    section("Info", order); order += 1
+    toggleRow("Name Tag",        "NameTag",           order); order += 1
+    toggleRow("Distance Total",  "DistanceText",      order); order += 1
+    toggleRow("Distance X/Z",    "DistanceAxes",      order); order += 1
+    toggleRow("Health Vertical", "HealthBarVertical", order); order += 1
+    toggleRow("Health Horizontal","HealthBarHorizontal", order); order += 1
+
+    section("Filters", order); order += 1
+    toggleRow("Team Check",      "TeamCheck",         order); order += 1
+    toggleRow("Visibility Check","VisibleCheck",      order); order += 1
+    sliderRow("Max Distance",    "MaxDistance",  100, 5000, order); order += 1
+
+    local function paintMaster()
+        master.Text = Config.Enabled and "ON" or "OFF"
+        master.BackgroundColor3 = Config.Enabled and Color3.fromRGB(0, 170, 80) or Color3.fromRGB(60, 60, 70)
+    end
+    master.MouseButton1Click:Connect(function()
+        Config.Enabled = not Config.Enabled
+        paintMaster()
+    end)
+
+    local collapsed = false
+    local fullSize  = UDim2.new(0, 260, 0, 420)
+    local smallSize = UDim2.new(0, 260, 0, 36)
+    collapse.MouseButton1Click:Connect(function()
+        collapsed = not collapsed
+        Tween:Create(main, TweenInfo.new(0.2), {Size = collapsed and smallSize or fullSize}):Play()
+        body.Visible = not collapsed
+        collapse.Text = collapsed and "+" or "–"
+    end)
+
+    local dragging, dragStart, startPos
+    header.InputBegan:Connect(function(inp)
+        if inp.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = true
+            dragStart = inp.Position
+            startPos  = main.Position
+        end
+    end)
+    UIS.InputChanged:Connect(function(inp)
+        if dragging and inp.UserInputType == Enum.UserInputType.MouseMovement then
+            local delta = inp.Position - dragStart
+            main.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X,
+                                       startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+        end
+    end)
+    UIS.InputEnded:Connect(function(inp)
+        if inp.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end
+    end)
+
+    return gui
+end
+
+-- ============================================================
+-- LOOP
+-- ============================================================
+local function cleanupAll()
+    for plr in pairs(esp) do clearEsp(plr) end
+    esp = {}
+end
+
+local renderConn = RunService.RenderStepped:Connect(function()
+    if not Config.Enabled then return end
+    for _, plr in ipairs(Players:GetPlayers()) do
+        pcall(renderPlayer, plr)
+    end
+end)
+
+-- Conexão única de limpeza, sem vazar. Se o personagem for removido, limpa o ESP.
+local removeConn = Players.PlayerRemoving:Connect(function(plr) clearEsp(plr) end)
+local charConn = Players.PlayerAdded:Connect(function(plr)
+    -- Isso garante que se o cara der respawn, os desenhos antigos sejam limpos
+    plr.CharacterRemoving:Connect(function() clearEsp(plr) end)
+end)
+
+-- ============================================================
+-- SELF-CLEANUP ON RE-EXECUTE
+-- ============================================================
+if _G.__mica_dyy__ then
+    pcall(function()
+        if _G.__mica_dyy__.gui        then _G.__mica_dyy__.gui:Destroy() end
+        if _G.__mica_dyy__.renderConn then _G.__mica_dyy__.renderConn:Disconnect() end
+        if _G.__mica_dyy__.removeConn then _G.__mica_dyy__.removeConn:Disconnect() end
+        if _G.__mica_dyy__.charConn   then _G.__mica_dyy__.charConn:Disconnect() end
+        _G.__mica_dyy__.cleanup()
+    end)
+end
+
+local gui = buildPanel()
+
+_G.__mica_dyy__ = {
+    gui        = gui,
+    renderConn = renderConn,
+    removeConn = removeConn,
+    charConn   = charConn,
+    cleanup    = cleanupAll,
+    config     = Config,
+}
