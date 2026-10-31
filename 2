@@ -1,0 +1,52 @@
+-- Debug Scanner: Volleyball Legends Spin Remotes
+-- Cola no Xeno e executa. Olha o F9 (Console) depois.
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Players = game:GetService("Players")
+
+print("========================================")
+print("[DEBUG SCANNER] Iniciando varredura de remotes...")
+print("========================================")
+
+local found = 0
+
+local function scanFolder(folder)
+    for _, obj in ipairs(folder:GetDescendants()) do
+        if obj:IsA("RemoteEvent") or obj:IsA("RemoteFunction") then
+            local name = string.lower(obj.Name)
+            -- Filtro mais amplo pra achar o que interessa
+            if string.find(name, "spin") or string.find(name, "roll") or string.find(name, "gacha") or string.find(name, "lucky") or string.find(name, "roulette") then
+                found = found + 1
+                local class = obj:IsA("RemoteEvent") and "RemoteEvent (FireServer)" or "RemoteFunction (InvokeServer)"
+                print(string.format("[%d] NOME: %s", found, obj.Name))
+                print(string.format("    CAMINHO: %s", obj:GetFullName()))
+                print(string.format("    CLASSE: %s", class))
+                print("----------------------------------------")
+            end
+        end
+    end
+end
+
+-- 1. Varre o ReplicatedStorage
+print("[*] Varrendo ReplicatedStorage...")
+scanFolder(ReplicatedStorage)
+
+-- 2. Varre o Workspace (alguns jogos colocam remotes lá)
+print("[*] Varrendo Workspace...")
+scanFolder(workspace)
+
+-- 3. Varre o Player (às vezes tem RemoteEvents locais)
+print("[*] Varrendo Player local...")
+if Players.LocalPlayer then
+    scanFolder(Players.LocalPlayer)
+end
+
+print("========================================")
+if found == 0 then
+    print("[!] NENHUM remote encontrado com os filtros atuais.")
+    print("Tire um print do jogo com o menu de Lucky Spin aberto e me mande.")
+else
+    print(string.format("[+] Varredura concluída. %d remotes encontrados.", found))
+    print("[!] Copie a lista acima e me mande.")
+end
+print("========================================")
