@@ -1,4 +1,4 @@
--- Roblox ESP + Aimbot | Xeno | Panel "mica.dyy" | Complete Build
+-- Roblox ESP + Aimbot | Xeno | Panel "mica.dyy" (Neon Purple UI) | Complete Build
 -- Load: paste into Xeno, execute. Re-execute safe (self-cleanup via _G).
 
 local Players    = game:GetService("Players")
@@ -40,14 +40,22 @@ local Config = {
     AimPrediction       = 0.165,
     AimPart             = "Head",
 
-    -- Colors
+    -- Colors (ESP)
     BoxColor            = Color3.fromRGB(255, 255, 255),
     Box3DColor          = Color3.fromRGB(255, 200, 80),
     SkeletonColor       = Color3.fromRGB(120, 255, 120),
     LineColor           = Color3.fromRGB(255, 255, 255),
     NameColor           = Color3.fromRGB(255, 255, 255),
     DistanceColor       = Color3.fromRGB(200, 200, 200),
-    PanelAccent         = Color3.fromRGB(80, 200, 255),
+
+    -- Cores do Painel (Neon Purple)
+    PanelBg             = Color3.fromRGB(10, 5, 16),
+    PanelSidebar        = Color3.fromRGB(15, 8, 24),
+    PanelBox            = Color3.fromRGB(15, 8, 24),
+    PanelAccent         = Color3.fromRGB(138, 43, 226),
+    PanelText           = Color3.fromRGB(230, 230, 230),
+    PanelTextDark       = Color3.fromRGB(120, 120, 130),
+
     TextSize            = 13,
     TextFont            = 2,
     TextOutline         = true,
@@ -373,7 +381,7 @@ local function renderPlayer(plr)
 end
 
 -- ============================================================
--- PANEL
+-- PANEL (NEON PURPLE UI)
 -- ============================================================
 local function buildPanel()
     local parent = (gethui and gethui()) or game:GetService("CoreGui")
@@ -390,87 +398,164 @@ local function buildPanel()
 
     local main = Instance.new("Frame")
     main.Name = "Main"
-    main.Size = UDim2.new(0, 260, 0, 420)
-    main.Position = UDim2.new(0, 40, 0, 40)
-    main.BackgroundColor3 = Color3.fromRGB(20, 20, 24)
+    main.Size = UDim2.new(0, 520, 0, 380)
+    main.Position = UDim2.new(0.5, -260, 0.5, -190)
+    main.BackgroundColor3 = Config.PanelBg
     main.BorderSizePixel = 0
     main.Active = true
     main.ClipsDescendants = true
     main.Parent = gui
 
     local mainCorner = Instance.new("UICorner", main)
-    mainCorner.CornerRadius = UDim.new(0, 8)
+    mainCorner.CornerRadius = UDim.new(0, 12)
 
     local stroke = Instance.new("UIStroke", main)
     stroke.Color = Config.PanelAccent
-    stroke.Thickness = 1
-    stroke.Transparency = 0.4
+    stroke.Thickness = 1.5
+    stroke.Transparency = 0.3
 
+    -- SIDEBAR
+    local sidebar = Instance.new("Frame")
+    sidebar.Name = "Sidebar"
+    sidebar.Size = UDim2.new(0, 60, 1, 0)
+    sidebar.BackgroundTransparency = 1
+    sidebar.Parent = main
+
+    local sidebarLine = Instance.new("Frame")
+    sidebarLine.Size = UDim2.new(0, 1, 1, -20)
+    sidebarLine.Position = UDim2.new(1, -1, 0, 10)
+    sidebarLine.BackgroundColor3 = Color3.fromRGB(40, 20, 60)
+    sidebarLine.BorderSizePixel = 0
+    sidebarLine.Parent = sidebar
+
+    local logo = Instance.new("TextLabel")
+    logo.Size = UDim2.new(1, 0, 0, 60)
+    logo.BackgroundTransparency = 1
+    logo.Text = "M"
+    logo.TextColor3 = Config.PanelAccent
+    logo.Font = Enum.Font.GothamBold
+    logo.TextSize = 32
+    logo.Parent = sidebar
+
+    -- HEADER
     local header = Instance.new("Frame")
     header.Name = "Header"
-    header.Size = UDim2.new(1, 0, 0, 36)
-    header.BackgroundColor3 = Color3.fromRGB(28, 28, 34)
-    header.BorderSizePixel = 0
+    header.Size = UDim2.new(1, -60, 0, 60)
+    header.Position = UDim2.new(0, 60, 0, 0)
+    header.BackgroundTransparency = 1
     header.Parent = main
-    local hCorner = Instance.new("UICorner", header)
-    hCorner.CornerRadius = UDim.new(0, 8)
 
     local title = Instance.new("TextLabel")
-    title.Size = UDim2.new(1, -70, 1, 0)
-    title.Position = UDim2.new(0, 12, 0, 0)
+    title.Size = UDim2.new(0, 200, 1, 0)
+    title.Position = UDim2.new(0, 20, 0, 0)
     title.BackgroundTransparency = 1
-    title.Text = "mica.dyy"
-    title.TextColor3 = Config.PanelAccent
-    title.Font = Enum.Font.GothamBold
-    title.TextSize = 16
+    title.Text = "MICA.DYY"
+    title.TextColor3 = Color3.fromRGB(255, 255, 255)
+    title.Font = Enum.Font.GothamBlack
+    title.TextSize = 22
     title.TextXAlignment = Enum.TextXAlignment.Left
     title.Parent = header
 
-    local collapse = Instance.new("TextButton")
-    collapse.Size = UDim2.new(0, 26, 0, 26)
-    collapse.Position = UDim2.new(1, -32, 0, 5)
-    collapse.BackgroundColor3 = Color3.fromRGB(40, 40, 48)
-    collapse.Text = "–"
-    collapse.TextColor3 = Color3.fromRGB(220, 220, 220)
-    collapse.Font = Enum.Font.GothamBold
-    collapse.TextSize = 16
-    collapse.BorderSizePixel = 0
-    collapse.Parent = header
-    local cCorner = Instance.new("UICorner", collapse)
-    cCorner.CornerRadius = UDim.new(0, 5)
+    local titleStroke = Instance.new("UIStroke", title)
+    titleStroke.Color = Config.PanelAccent
+    titleStroke.Thickness = 1
+    titleStroke.Transparency = 0.5
 
     local master = Instance.new("TextButton")
-    master.Size = UDim2.new(0, 52, 0, 22)
-    master.Position = UDim2.new(1, -92, 0, 7)
-    master.BackgroundColor3 = Color3.fromRGB(0, 170, 80)
-    master.Text = "ON"
+    master.Size = UDim2.new(0, 44, 0, 44)
+    master.Position = UDim2.new(1, -64, 0.5, -22)
+    master.BackgroundColor3 = Config.PanelAccent
+    master.Text = "M"
     master.TextColor3 = Color3.fromRGB(255, 255, 255)
     master.Font = Enum.Font.GothamBold
-    master.TextSize = 12
+    master.TextSize = 20
     master.BorderSizePixel = 0
     master.Parent = header
     local mCorner = Instance.new("UICorner", master)
-    mCorner.CornerRadius = UDim.new(0, 11)
+    mCorner.CornerRadius = UDim.new(1, 0)
 
-    local body = Instance.new("ScrollingFrame")
+    local masterStroke = Instance.new("UIStroke", master)
+    masterStroke.Color = Color3.fromRGB(200, 100, 255)
+    masterStroke.Thickness = 1
+
+    local collapse = Instance.new("TextButton")
+    collapse.Size = UDim2.new(0, 30, 0, 30)
+    collapse.Position = UDim2.new(1, -110, 0.5, -15)
+    collapse.BackgroundTransparency = 1
+    collapse.Text = "×"
+    collapse.TextColor3 = Config.PanelTextDark
+    collapse.Font = Enum.Font.GothamBold
+    collapse.TextSize = 24
+    collapse.Parent = header
+
+    -- BODY
+    local body = Instance.new("Frame")
     body.Name = "Body"
-    body.Size = UDim2.new(1, -12, 1, -46)
-    body.Position = UDim2.new(0, 6, 0, 42)
+    body.Size = UDim2.new(1, -80, 1, -80)
+    body.Position = UDim2.new(0, 70, 0, 70)
     body.BackgroundTransparency = 1
-    body.BorderSizePixel = 0
-    body.ScrollBarThickness = 4
-    body.ScrollBarImageColor3 = Config.PanelAccent
-    body.CanvasSize = UDim2.new(0, 0, 0, 0)
-    body.AutomaticCanvasSize = Enum.AutomaticSize.Y
     body.Parent = main
 
-    local list = Instance.new("UIListLayout", body)
-    list.Padding = UDim.new(0, 4)
-    list.SortOrder = Enum.SortOrder.LayoutOrder
+    local grid = Instance.new("UIGridLayout", body)
+    grid.CellSize = UDim2.new(0.5, -10, 1, 0)
+    grid.CellPadding = UDim2.new(0, 20, 0, 0)
+    grid.SortOrder = Enum.SortOrder.LayoutOrder
 
-    local function section(text, order)
+    local leftBox = Instance.new("Frame")
+    leftBox.Size = UDim2.new(0.5, -10, 1, 0)
+    leftBox.BackgroundColor3 = Config.PanelBox
+    leftBox.BorderSizePixel = 0
+    leftBox.LayoutOrder = 1
+    leftBox.Parent = body
+    local lbCorner = Instance.new("UICorner", leftBox)
+    lbCorner.CornerRadius = UDim.new(0, 10)
+    local lbStroke = Instance.new("UIStroke", leftBox)
+    lbStroke.Color = Color3.fromRGB(30, 15, 45)
+    lbStroke.Thickness = 1
+
+    local lbScroll = Instance.new("ScrollingFrame", leftBox)
+    lbScroll.Size = UDim2.new(1, -10, 1, -10)
+    lbScroll.Position = UDim2.new(0, 5, 0, 5)
+    lbScroll.BackgroundTransparency = 1
+    lbScroll.BorderSizePixel = 0
+    lbScroll.ScrollBarThickness = 2
+    lbScroll.ScrollBarImageColor3 = Config.PanelAccent
+    lbScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+    lbScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+
+    local lbList = Instance.new("UIListLayout", lbScroll)
+    lbList.Padding = UDim.new(0, 6)
+    lbList.SortOrder = Enum.SortOrder.LayoutOrder
+
+    local rightBox = Instance.new("Frame")
+    rightBox.Size = UDim2.new(0.5, -10, 1, 0)
+    rightBox.BackgroundColor3 = Config.PanelBox
+    rightBox.BorderSizePixel = 0
+    rightBox.LayoutOrder = 2
+    rightBox.Parent = body
+    local rbCorner = Instance.new("UICorner", rightBox)
+    rbCorner.CornerRadius = UDim.new(0, 10)
+    local rbStroke = Instance.new("UIStroke", rightBox)
+    rbStroke.Color = Color3.fromRGB(30, 15, 45)
+    rbStroke.Thickness = 1
+
+    local rbScroll = Instance.new("ScrollingFrame", rightBox)
+    rbScroll.Size = UDim2.new(1, -10, 1, -10)
+    rbScroll.Position = UDim2.new(0, 5, 0, 5)
+    rbScroll.BackgroundTransparency = 1
+    rbScroll.BorderSizePixel = 0
+    rbScroll.ScrollBarThickness = 2
+    rbScroll.ScrollBarImageColor3 = Config.PanelAccent
+    rbScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+    rbScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+
+    local rbList = Instance.new("UIListLayout", rbScroll)
+    rbList.Padding = UDim.new(0, 6)
+    rbList.SortOrder = Enum.SortOrder.LayoutOrder
+
+    local function section(text, parent, order)
         local lbl = Instance.new("TextLabel")
-        lbl.Size = UDim2.new(1, 0, 0, 22)
+        lbl.Size = UDim2.new(1, 0, 0, 24)
         lbl.BackgroundTransparency = 1
         lbl.Text = text:upper()
         lbl.TextColor3 = Config.PanelAccent
@@ -478,78 +563,76 @@ local function buildPanel()
         lbl.TextSize = 11
         lbl.TextXAlignment = Enum.TextXAlignment.Left
         lbl.LayoutOrder = order
-        lbl.Parent = body
+        lbl.Parent = parent
         return lbl
     end
 
-    local function toggleRow(label, key, order)
+    local function toggleRow(label, key, parent, order)
         local row = Instance.new("Frame")
         row.Size = UDim2.new(1, 0, 0, 28)
-        row.BackgroundColor3 = Color3.fromRGB(30, 30, 36)
-        row.BorderSizePixel = 0
+        row.BackgroundTransparency = 1
         row.LayoutOrder = order
-        row.Parent = body
-        local rc = Instance.new("UICorner", row)
-        rc.CornerRadius = UDim.new(0, 5)
+        row.Parent = parent
 
         local lbl = Instance.new("TextLabel")
-        lbl.Size = UDim2.new(1, -50, 1, 0)
-        lbl.Position = UDim2.new(0, 10, 0, 0)
+        lbl.Size = UDim2.new(1, -40, 1, 0)
         lbl.BackgroundTransparency = 1
         lbl.Text = label
-        lbl.TextColor3 = Color3.fromRGB(230, 230, 230)
+        lbl.TextColor3 = Config.PanelText
         lbl.Font = Enum.Font.Gotham
         lbl.TextSize = 12
         lbl.TextXAlignment = Enum.TextXAlignment.Left
         lbl.Parent = row
 
         local btn = Instance.new("TextButton")
-        btn.Size = UDim2.new(0, 38, 0, 18)
-        btn.Position = UDim2.new(1, -46, 0.5, -9)
-        btn.BackgroundColor3 = Config[key] and Color3.fromRGB(0, 170, 80) or Color3.fromRGB(60, 60, 70)
-        btn.Text = Config[key] and "ON" or "OFF"
-        btn.TextColor3 = Color3.fromRGB(255, 255, 255)
-        btn.Font = Enum.Font.GothamBold
-        btn.TextSize = 10
+        btn.Size = UDim2.new(0, 28, 0, 16)
+        btn.Position = UDim2.new(1, -28, 0.5, -8)
+        btn.BackgroundColor3 = Config[key] and Config.PanelAccent or Color3.fromRGB(30, 20, 45)
+        btn.Text = ""
         btn.BorderSizePixel = 0
         btn.Parent = row
         local bc = Instance.new("UICorner", btn)
-        bc.CornerRadius = UDim.new(0, 9)
+        bc.CornerRadius = UDim.new(1, 0)
+
+        local dot = Instance.new("Frame")
+        dot.Size = UDim2.new(0, 10, 0, 10)
+        dot.Position = Config[key] and UDim2.new(1, -13, 0.5, -5) or UDim2.new(0, 3, 0.5, -5)
+        dot.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+        dot.BorderSizePixel = 0
+        dot.Parent = btn
+        local dc = Instance.new("UICorner", dot)
+        dc.CornerRadius = UDim.new(1, 0)
 
         btn.MouseButton1Click:Connect(function()
             Config[key] = not Config[key]
-            btn.BackgroundColor3 = Config[key] and Color3.fromRGB(0, 170, 80) or Color3.fromRGB(60, 60, 70)
-            btn.Text = Config[key] and "ON" or "OFF"
+            btn.BackgroundColor3 = Config[key] and Config.PanelAccent or Color3.fromRGB(30, 20, 45)
+            dot.Position = Config[key] and UDim2.new(1, -13, 0.5, -5) or UDim2.new(0, 3, 0.5, -5)
         end)
 
-        return row, btn
+        return row
     end
 
-    local function sliderRow(label, key, minVal, maxVal, order)
+    local function sliderRow(label, key, minVal, maxVal, parent, order)
         local row = Instance.new("Frame")
-        row.Size = UDim2.new(1, 0, 0, 40)
-        row.BackgroundColor3 = Color3.fromRGB(30, 30, 36)
-        row.BorderSizePixel = 0
+        row.Size = UDim2.new(1, 0, 0, 38)
+        row.BackgroundTransparency = 1
         row.LayoutOrder = order
-        row.Parent = body
-        local rc = Instance.new("UICorner", row)
-        rc.CornerRadius = UDim.new(0, 5)
+        row.Parent = parent
 
         local lbl = Instance.new("TextLabel")
-        lbl.Size = UDim2.new(1, -20, 0, 16)
-        lbl.Position = UDim2.new(0, 10, 0, 2)
+        lbl.Size = UDim2.new(1, 0, 0, 14)
         lbl.BackgroundTransparency = 1
         lbl.Text = label .. ": " .. tostring(Config[key])
-        lbl.TextColor3 = Color3.fromRGB(230, 230, 230)
+        lbl.TextColor3 = Config.PanelText
         lbl.Font = Enum.Font.Gotham
         lbl.TextSize = 12
         lbl.TextXAlignment = Enum.TextXAlignment.Left
         lbl.Parent = row
 
         local track = Instance.new("Frame")
-        track.Size = UDim2.new(1, -20, 0, 5)
-        track.Position = UDim2.new(0, 10, 0, 24)
-        track.BackgroundColor3 = Color3.fromRGB(60, 60, 70)
+        track.Size = UDim2.new(1, -10, 0, 4)
+        track.Position = UDim2.new(0, 0, 0, 22)
+        track.BackgroundColor3 = Color3.fromRGB(30, 20, 45)
         track.BorderSizePixel = 0
         track.Parent = row
         local tc = Instance.new("UICorner", track)
@@ -589,96 +672,8 @@ local function buildPanel()
         end)
     end
 
-    local order = 0
-
-    section("Aimbot", order); order += 1
-    toggleRow("Enable Aimbot",   "AimEnabled",        order); order += 1
-    toggleRow("Wall Check",      "AimWallCheck",      order); order += 1
-    sliderRow("Aim FOV",         "AimFOV",        50,  500, order); order += 1
-    sliderRow("Smoothing",       "AimSmooth",     0.01, 1,   order); order += 1
-
-    section("Render", order); order += 1
-    toggleRow("Box 2D",          "Box2D",             order); order += 1
-    toggleRow("Fill Box",        "FillBox",           order); order += 1
-    toggleRow("Box 3D",          "Box3D",             order); order += 1
-    toggleRow("Skeleton",        "Skeleton",          order); order += 1
-    toggleRow("Tracers (Line)",  "Line",              order); order += 1
-    toggleRow("Head Dot",        "HeadDot",           order); order += 1
-
-    section("Info", order); order += 1
-    toggleRow("Name Tag",        "NameTag",           order); order += 1
-    toggleRow("Distance Total",  "DistanceText",      order); order += 1
-    toggleRow("Distance X/Z",    "DistanceAxes",      order); order += 1
-    toggleRow("Health Vertical", "HealthBarVertical", order); order += 1
-    toggleRow("Health Horizontal","HealthBarHorizontal", order); order += 1
-
-    section("Filters", order); order += 1
-    toggleRow("Team Check",      "TeamCheck",         order); order += 1
-    toggleRow("Visibility Check","VisibleCheck",      order); order += 1
-    sliderRow("Max Distance",    "MaxDistance",  100, 5000, order); order += 1
-
-    local function paintMaster()
-        master.Text = Config.Enabled and "ON" or "OFF"
-        master.BackgroundColor3 = Config.Enabled and Color3.fromRGB(0, 170, 80) or Color3.fromRGB(60, 60, 70)
-    end
-    master.MouseButton1Click:Connect(function()
-        Config.Enabled = not Config.Enabled
-        paintMaster()
-    end)
-
-    local collapsed = false
-    local fullSize  = UDim2.new(0, 260, 0, 420)
-    local smallSize = UDim2.new(0, 260, 0, 36)
-    collapse.MouseButton1Click:Connect(function()
-        collapsed = not collapsed
-        Tween:Create(main, TweenInfo.new(0.2), {Size = collapsed and smallSize or fullSize}):Play()
-        body.Visible = not collapsed
-        collapse.Text = collapsed and "+" or "–"
-    end)
-
-    local dragging, dragStart, startPos
-    header.InputBegan:Connect(function(inp)
-        if inp.UserInputType == Enum.UserInputType.MouseButton1 then
-            dragging = true
-            dragStart = inp.Position
-            startPos  = main.Position
-        end
-    end)
-    UIS.InputChanged:Connect(function(inp)
-        if dragging and inp.UserInputType == Enum.UserInputType.MouseMovement then
-            local delta = inp.Position - dragStart
-            main.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X,
-                                       startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-        end
-    end)
-    UIS.InputEnded:Connect(function(inp)
-        if inp.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end
-    end)
-
-    return gui
-end
-
--- ============================================================
--- INITIALIZATION
--- ============================================================
-local function cleanupAll()
-    for plr in pairs(esp) do clearEsp(plr) end
-    esp = {}
-end
-
-local renderConn = RunService.RenderStepped:Connect(function()
-    if not Config.Enabled then return end
-    for _, plr in ipairs(Players:GetPlayers()) do
-        pcall(renderPlayer, plr)
-    end
-end)
-
-local removeConn = Players.PlayerRemoving:Connect(function(plr) clearEsp(plr) end)
-local charConn = Players.PlayerAdded:Connect(function(plr)
-    plr.CharacterRemoving:Connect(function() clearEsp(plr) end)
-end)
-
-if _G.__mica_dyy__ then
-    pcall(function()
-        if _G.__mica_dyy__.gui        then _G.__mica_dyy__.gui:Destroy() end
-        if _G.__mica_dyy__.renderConn then _G.__mica_dyy__.renderConn
+    -- PREENCHER BLOCOS
+    local orderL = 1
+    section("AIMBOT", lbScroll, orderL); orderL = orderL + 1
+    toggleRow("Enable Aimbot", "AimEnabled", lbScroll, orderL); orderL = orderL + 1
+    toggleRow("Wall Check", "AimWallCheck", lbScroll, orderL); orderL = orderL + 
