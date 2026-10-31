@@ -28,7 +28,7 @@ local Config = {
     NameTag             = true,
     DistanceText        = true,
     DistanceAxes        = false,
-    Tracers             = true,       -- alias placeholder: same as Line, kept for panel symmetry
+    Tracers             = true,
     FillBox             = false,
     HeadDot             = false,
 
@@ -146,46 +146,61 @@ local function clearEsp(plr)
     esp[plr] = nil
 end
 
+-- Função para esconder tudo sem deletar, quando o alvo sai da tela ou morre
+local function hideAll(e)
+    if not e then return end
+    for _, v in pairs(e) do
+        if typeof(v) == "Drawing" then v.Visible = false
+        elseif type(v) == "table" then
+            for _, l in pairs(v) do if typeof(l) == "Drawing" then l.Visible = false end end
+        end
+    end
+end
+
 -- ============================================================
 -- RENDER
 -- ============================================================
 local function renderPlayer(plr)
     if plr == LocalPlayer then return end
     local char, hrp, head, hum = getCharacterParts(plr)
+    local e = esp[plr]
+
+    -- Se o jogador morreu, kitou ou o personagem sumiu
     if not char then
-        local e = esp[plr]; if e then
-            for _, v in pairs(e) do
-                if typeof(v) == "Drawing" then v.Visible = false
-                elseif type(v) == "table" then
-                    for _, l in pairs(v) do if typeof(l) == "Drawing" then l.Visible = false end end
-                end
-            end
-        end
+        if e then hideAll(e) end
         return
     end
-    if Config.TeamCheck and LocalPlayer.Team and plr.Team == LocalPlayer.Team then return end
+
+    if Config.TeamCheck and LocalPlayer.Team and plr.Team == LocalPlayer.Team then
+        if e then hideAll(e) end
+        return
+    end
 
     local myPos = (LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart"))
                   and LocalPlayer.Character.HumanoidRootPart.Position
                   or Camera.CFrame.Position
     local dist = (hrp.Position - myPos).Magnitude
-    if Config.MaxDistance > 0 and dist > Config.MaxDistance then return end
-    if not visible(plr, hrp) then return end
+    
+    if Config.MaxDistance > 0 and dist > Config.MaxDistance then
+        if e then hideAll(e) end
+        return
+    end
 
-    local e = ensureEsp(plr)
+    if not visible(plr, hrp) then
+        if e then hideAll(e) end
+        return
+    end
+
+    e = ensureEsp(plr)
 
     local headScreen = screenPoint(head.Position)
     local hrpScreen  = screenPoint(hrp.Position)
     local headTop    = screenPoint(head.Position + Vector3.new(0, head.Size.Y * 0.5, 0))
     local feetBot    = screenPoint(hrp.Position - Vector3.new(0, hrp.Size.Y * 0.5 + 2.4, 0))
 
+    -- Se o alvo saiu do campo de visão da câmera (atrás, longe ou fora da tela)
     if not (headScreen and hrpScreen and headTop and feetBot) then
-        for _, v in pairs(e) do
-            if typeof(v) == "Drawing" then v.Visible = false
-            elseif type(v) == "table" then
-                for _, l in pairs(v) do if typeof(l) == "Drawing" then l.Visible = false end end
-            end
-        end
+        hideAll(e)
         return
     end
 
@@ -367,7 +382,6 @@ local function buildPanel()
     title.TextXAlignment = Enum.TextXAlignment.Left
     title.Parent = header
 
-    -- collapse button
     local collapse = Instance.new("TextButton")
     collapse.Size = UDim2.new(0, 26, 0, 26)
     collapse.Position = UDim2.new(1, -32, 0, 5)
@@ -381,7 +395,6 @@ local function buildPanel()
     local cCorner = Instance.new("UICorner", collapse)
     cCorner.CornerRadius = UDim.new(0, 5)
 
-    -- master on/off pill in header
     local master = Instance.new("TextButton")
     master.Size = UDim2.new(0, 52, 0, 22)
     master.Position = UDim2.new(1, -92, 0, 7)
@@ -395,7 +408,6 @@ local function buildPanel()
     local mCorner = Instance.new("UICorner", master)
     mCorner.CornerRadius = UDim.new(0, 11)
 
-    -- BODY (scrolling)
     local body = Instance.new("ScrollingFrame")
     body.Name = "Body"
     body.Size = UDim2.new(1, -12, 1, -46)
@@ -412,7 +424,6 @@ local function buildPanel()
     list.Padding = UDim.new(0, 4)
     list.SortOrder = Enum.SortOrder.LayoutOrder
 
-    -- section header helper
     local function section(text, order)
         local lbl = Instance.new("TextLabel")
         lbl.Size = UDim2.new(1, 0, 0, 22)
@@ -427,7 +438,6 @@ local function buildPanel()
         return lbl
     end
 
-    -- toggle row
     local function toggleRow(label, key, order)
         local row = Instance.new("Frame")
         row.Size = UDim2.new(1, 0, 0, 28)
@@ -471,7 +481,6 @@ local function buildPanel()
         return row, btn
     end
 
-    -- slider row
     local function sliderRow(label, key, minVal, maxVal, order)
         local row = Instance.new("Frame")
         row.Size = UDim2.new(1, 0, 0, 40)
@@ -536,7 +545,6 @@ local function buildPanel()
         end)
     end
 
-    -- build rows
     local order = 0
     section("Render", order); order += 1
     toggleRow("Box 2D",          "Box2D",             order); order += 1
@@ -558,7 +566,6 @@ local function buildPanel()
     toggleRow("Visibility Check","VisibleCheck",      order); order += 1
     sliderRow("Max Distance",    "MaxDistance",  100, 5000, order); order += 1
 
-    -- MASTER toggle handler
     local function paintMaster()
         master.Text = Config.Enabled and "ON" or "OFF"
         master.BackgroundColor3 = Config.Enabled and Color3.fromRGB(0, 170, 80) or Color3.fromRGB(60, 60, 70)
@@ -568,7 +575,6 @@ local function buildPanel()
         paintMaster()
     end)
 
-    -- COLLAPSE
     local collapsed = false
     local fullSize  = UDim2.new(0, 260, 0, 420)
     local smallSize = UDim2.new(0, 260, 0, 36)
@@ -579,7 +585,6 @@ local function buildPanel()
         collapse.Text = collapsed and "+" or "–"
     end)
 
-    -- DRAG
     local dragging, dragStart, startPos
     header.InputBegan:Connect(function(inp)
         if inp.UserInputType == Enum.UserInputType.MouseButton1 then
@@ -617,7 +622,11 @@ local renderConn = RunService.RenderStepped:Connect(function()
     end
 end)
 
+-- Limpeza imediata quando o jogador sai do servidor
 local removeConn = Players.PlayerRemoving:Connect(function(plr) clearEsp(plr) end)
+local charConn = Players.PlayerAdded:Connect(function(plr)
+    plr.CharacterRemoving:Connect(function() clearEsp(plr) end)
+end)
 
 -- ============================================================
 -- SELF-CLEANUP ON RE-EXECUTE
@@ -627,6 +636,7 @@ if _G.__mica_dyy__ then
         if _G.__mica_dyy__.gui        then _G.__mica_dyy__.gui:Destroy() end
         if _G.__mica_dyy__.renderConn then _G.__mica_dyy__.renderConn:Disconnect() end
         if _G.__mica_dyy__.removeConn then _G.__mica_dyy__.removeConn:Disconnect() end
+        if _G.__mica_dyy__.charConn   then _G.__mica_dyy__.charConn:Disconnect() end
         _G.__mica_dyy__.cleanup()
     end)
 end
@@ -637,6 +647,7 @@ _G.__mica_dyy__ = {
     gui        = gui,
     renderConn = renderConn,
     removeConn = removeConn,
+    charConn   = charConn,
     cleanup    = cleanupAll,
     config     = Config,
 }
