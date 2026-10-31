@@ -88,7 +88,6 @@ local function visible(plr, hrp)
     return hit == nil or hit.Parent == hrp.Parent or hit:IsDescendantOf(hrp.Parent)
 end
 
--- Correção do fantasma: bloqueia coordenadas fora da tela
 local function screenPoint(pos)
     local sp, onScreen = Camera:WorldToViewportPoint(pos)
     if not onScreen then return nil end
@@ -182,7 +181,7 @@ local function getClosestPlayerToMouse()
             if char and (not Config.TeamCheck or plr.Team ~= LocalPlayer.Team) then
                 local targetPart = Config.AimPart == "Head" and head or hrp
                 local screenPos = screenPoint(targetPart.Position)
-                
+
                 if screenPos then
                     local dist = (mousePos - screenPos).Magnitude
                     if dist < shortestDist then
@@ -211,7 +210,7 @@ RunService.RenderStepped:Connect(function()
     if target then
         local camPos = Camera.CFrame.Position
         local targetPos = target.pos
-        
+
         if Config.AimPrediction > 0 and target.part then
             local velocity = target.part.AssemblyLinearVelocity
             targetPos = targetPos + (velocity * Config.AimPrediction)
@@ -591,13 +590,13 @@ local function buildPanel()
     end
 
     local order = 0
-    
+
     section("Aimbot", order); order += 1
     toggleRow("Enable Aimbot",   "AimEnabled",        order); order += 1
     toggleRow("Wall Check",      "AimWallCheck",      order); order += 1
     sliderRow("Aim FOV",         "AimFOV",        50,  500, order); order += 1
     sliderRow("Smoothing",       "AimSmooth",     0.01, 1,   order); order += 1
-    
+
     section("Render", order); order += 1
     toggleRow("Box 2D",          "Box2D",             order); order += 1
     toggleRow("Fill Box",        "FillBox",           order); order += 1
@@ -681,4 +680,5 @@ end)
 
 if _G.__mica_dyy__ then
     pcall(function()
-        if _G.__mica
+        if _G.__mica_dyy__.gui        then _G.__mica_dyy__.gui:Destroy() end
+        if _G.__mica_dyy__.renderConn then _G.__mica_dyy__.renderConn
