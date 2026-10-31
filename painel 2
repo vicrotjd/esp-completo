@@ -1,0 +1,361 @@
+-- mica.dyy ESP+Aimbot | Xeno | re-exec safe | ANON
+if _G.MicaDyy then pcall(_G.MicaDyy.Destroy) _G.MicaDyy = nil end
+
+local P,R,U,W,C = game:GetService("Players"),game:GetService("RunService"),game:GetService("UserInputService"),game:GetService("Workspace"),game:GetService("CoreGui")
+local LP,Cam = P.LocalPlayer,W.CurrentCamera
+
+local Cfg = {
+    Enabled=true,TeamCheck=true,VisibleCheck=false,MaxDistance=1500,
+    Box2D=true,Box3D=false,Skeleton=true,Line=false,
+    HealthBarVertical=true,HealthBarHorizontal=false,
+    NameTag=true,DistanceText=true,DistanceAxes=false,FillBox=false,HeadDot=false,WeaponText=false,
+    AimEnabled=false,AimKey=Enum.UserInputType.MouseButton2,AimSmooth=0.25,AimFOV=150,
+    AimWallCheck=true,AimPrediction=0.165,AimPart="Head",AimVisibleOnly=false,
+    BoxColor=Color3.fromRGB(255,255,255),Box3DColor=Color3.fromRGB(255,200,80),
+    SkeletonColor=Color3.fromRGB(120,255,120),LineColor=Color3.fromRGB(255,255,255),
+    NameColor=Color3.fromRGB(255,255,255),DistanceColor=Color3.fromRGB(200,200,200),
+    FOVColor=Color3.fromRGB(138,43,226),
+    PanelBg=Color3.fromRGB(10,5,16),PanelBox=Color3.fromRGB(15,8,24),
+    PanelAccent=Color3.fromRGB(138,43,226),PanelText=Color3.fromRGB(230,230,230),
+    PanelTextDark=Color3.fromRGB(120,120,130),
+    TextSize=13,TextFont=2,TextOutline=true,TextTransparency=0,
+}
+
+local function d(class) return Drawing.new(class) end
+local function parts(plr)
+    local c=plr.Character if not c then return end
+    local h=c:FindFirstChild("HumanoidRootPart")
+    local hd=c:FindFirstChild("Head")
+    local hm=c:FindFirstChildOfClass("Humanoid")
+    if h and hd and hm and hm.Health>0 then return c,h,hd,hm end
+end
+local function w2s(pos)
+    local sp,on=Cam:WorldToViewportPoint(pos)
+    if not on then return end
+    local v=Cam.ViewportSize
+    if sp.X<0 or sp.X>v.X or sp.Y<0 or sp.Y>v.Y then return end
+    return Vector2.new(sp.X,sp.Y)
+end
+local visParams=RaycastParams.new()
+visParams.FilterType=Enum.RaycastFilterType.Exclude
+local function visible(plr,hrp)
+    if not Cfg.VisibleCheck then return true end
+    visParams.FilterDescendantsInstances={LP.Character,hrp.Parent}
+    local r=W:Raycast(Cam.CFrame.Position,hrp.Position-Cam.CFrame.Position,visParams)
+    return r==nil or r.Instance:IsDescendantOf(hrp.Parent)
+end
+local function hpCol(f) f=math.clamp(f,0,1) return Color3.new(1-f,f,0) end
+
+local SK6={{"Head","Torso"},{"Torso","HumanoidRootPart"},{"Torso","Left Arm"},{"Torso","Right Arm"},{"Torso","Left Leg"},{"Torso","Right Leg"}}
+local SK15={{"Head","UpperTorso"},{"UpperTorso","LowerTorso"},{"UpperTorso","LeftUpperArm"},{"LeftUpperArm","LeftLowerArm"},{"LeftLowerArm","LeftHand"},{"UpperTorso","RightUpperArm"},{"RightUpperArm","RightLowerArm"},{"RightLowerArm","RightHand"},{"LowerTorso","LeftUpperLeg"},{"LeftUpperLeg","LeftLowerLeg"},{"LeftLowerLeg","LeftFoot"},{"LowerTorso","RightUpperLeg"},{"RightUpperLeg","RightLowerLeg"},{"RightLowerLeg","RightFoot"}}
+
+local esp={}
+
+local function hide(e) if not e then return end
+    for _,v in pairs(e) do
+        if typeof(v)=="Drawing" then v.Visible=false
+        elseif type(v)=="table" then for _,l in pairs(v) do if typeof(l)=="Drawing" then l.Visible=false end end end
+    end
+end
+local function killEsp(plr)
+    local e=esp[plr] if not e then return end
+    for _,v in pairs(e) do
+        if typeof(v)=="Drawing" then pcall(function() v:Remove() end)
+        elseif type(v)=="table" then for _,l in pairs(v) do if typeof(l)=="Drawing" then pcall(function() l:Remove() end) end end end
+    end
+    esp[plr]=nil
+end
+local function mk(plr)
+    local e={
+        box2d=d("Square"),boxFill=d("Square"),box3d={},skeleton={},
+        line=d("Line"),hpV=d("Square"),hpVbg=d("Square"),hpH=d("Square"),hpHbg=d("Square"),
+        headDot=d("Circle"),name=d("Text"),dist=d("Text"),distX=d("Text"),distZ=d("Text"),weapon=d("Text"),
+    }
+    e.box2d.Thickness=1 e.boxFill.Filled=true e.boxFill.Transparency=0.75 e.boxFill.Visible=false
+    e.hpV.Filled=true e.hpVbg.Filled=true e.hpVbg.Color=Color3.new(0,0,0)
+    e.hpH.Filled=true e.hpHbg.Filled=true e.hpHbg.Color=Color3.new(0,0,0)
+    e.headDot.Filled=true
+    for _,t in ipairs({e.name,e.dist,e.distX,e.distZ,e.weapon}) do
+        t.Center=true t.Outline=Cfg.TextOutline t.Font=Cfg.TextFont t.Transparency=Cfg.TextTransparency
+    end
+    e.name.Size=Cfg.TextSize e.dist.Size=Cfg.TextSize
+    e.distX.Size=Cfg.TextSize-2 e.distZ.Size=Cfg.TextSize-2 e.weapon.Size=Cfg.TextSize-2
+    e.name.Color=Cfg.NameColor e.dist.Color=Cfg.DistanceColor e.distX.Color=Cfg.DistanceColor e.distZ.Color=Cfg.DistanceColor
+    esp[plr]=e return e
+end
+
+local aimHeld=false
+U.InputBegan:Connect(function(i,g) if not g and i.UserInputType==Cfg.AimKey then aimHeld=true end end)
+U.InputEnded:Connect(function(i) if i.UserInputType==Cfg.AimKey then aimHeld=false end end)
+
+local aimParams=RaycastParams.new()
+aimParams.FilterType=Enum.RaycastFilterType.Exclude
+
+local function aimTarget()
+    local m=U:GetMouseLocation() local best,bd=nil,Cfg.AimFOV
+    for _,plr in ipairs(P:GetPlayers()) do
+        if plr~=LP and (not Cfg.TeamCheck or plr.Team~=LP.Team) then
+            local c,hrp,hd,hm=parts(plr)
+            if c and (not Cfg.AimVisibleOnly or visible(plr,hrp)) then
+                local tp=Cfg.AimPart=="Head" and hd or Cfg.AimPart=="UpperTorso" and (c:FindFirstChild("UpperTorso") or hrp) or hrp
+                local sp=w2s(tp.Position)
+                if sp then
+                    local d=(m-sp).Magnitude
+                    if d<bd then
+                        local ok=true
+                        if Cfg.AimWallCheck then
+                            aimParams.FilterDescendantsInstances={LP.Character,c}
+                            ok=W:Raycast(Cam.CFrame.Position,tp.Position-Cam.CFrame.Position,aimParams)==nil
+                        end
+                        if ok then best={part=tp,pos=tp.Position} bd=d end
+                    end
+                end
+            end
+        end
+    end
+    return best
+end
+
+R.RenderStepped:Connect(function()
+    if not Cfg.Enabled or not Cfg.AimEnabled or not aimHeld then return end
+    local t=aimTarget() if not t then return end
+    local p=t.pos
+    if Cfg.AimPrediction>0 then p=p+(t.part.AssemblyLinearVelocity*Cfg.AimPrediction) end
+    local cf=CFrame.lookAt(Cam.CFrame.Position,p)
+    Cam.CFrame=Cam.CFrame:Lerp(cf,1-Cfg.AimSmooth)
+end)
+
+local function render(plr)
+    if plr==LP then return end
+    local c,hrp,hd,hm=parts(plr)
+    local e=esp[plr]
+    if not c then hide(e) return end
+    if Cfg.TeamCheck and LP.Team and plr.Team==LP.Team then hide(e) return end
+    local mc=LP.Character local mh=mc and mc:FindFirstChild("HumanoidRootPart")
+    local mp=mh and mh.Position or Cam.CFrame.Position
+    local dist=(hrp.Position-mp).Magnitude
+    if Cfg.MaxDistance>0 and dist>Cfg.MaxDistance then hide(e) return end
+    if not visible(plr,hrp) then hide(e) return end
+
+    e=e or mk(plr)
+    local hs=w2s(hd.Position) local ht=w2s(hd.Position+Vector3.new(0,hd.Size.Y*0.5,0))
+    local fb=w2s(hrp.Position-Vector3.new(0,hrp.Size.Y*0.5+2.4,0))
+    if not (hs and ht and fb) then hide(e) return end
+
+    local x=math.min(hs.X,fb.X)-6 local y=ht.Y-4
+    local w=math.max(math.abs(hs.X-fb.X)+12,24) local h=fb.Y-ht.Y+8
+
+    e.box2d.Visible=Cfg.Box2D
+    e.boxFill.Visible=Cfg.Box2D and Cfg.FillBox
+    if Cfg.Box2D then
+        e.box2d.Size=Vector2.new(w,h) e.box2d.Position=Vector2.new(x,y) e.box2d.Color=Cfg.BoxColor
+        if Cfg.FillBox then e.boxFill.Size=Vector2.new(w,h) e.boxFill.Position=Vector2.new(x,y) e.boxFill.Color=Cfg.BoxColor end
+    end
+
+    local cs={
+        Vector3.new(hrp.Size.X/2,hrp.Size.Y/2,hrp.Size.Z/2),Vector3.new(-hrp.Size.X/2,hrp.Size.Y/2,hrp.Size.Z/2),
+        Vector3.new(-hrp.Size.X/2,-hrp.Size.Y/2,hrp.Size.Z/2),Vector3.new(hrp.Size.X/2,-hrp.Size.Y/2,hrp.Size.Z/2),
+        Vector3.new(hrp.Size.X/2,hrp.Size.Y/2,-hrp.Size.Z/2),Vector3.new(-hrp.Size.X/2,hrp.Size.Y/2,-hrp.Size.Z/2),
+        Vector3.new(-hrp.Size.X/2,-hrp.Size.Y/2,-hrp.Size.Z/2),Vector3.new(hrp.Size.X/2,-hrp.Size.Y/2,-hrp.Size.Z/2),
+    }
+    local eds={{1,2},{2,3},{3,4},{4,1},{5,6},{6,7},{7,8},{8,5},{1,5},{2,6},{3,7},{4,8}}
+    if #e.box3d==0 then for i=1,12 do local l=d("Line") l.Thickness=1 l.Visible=false l.Color=Cfg.Box3DColor e.box3d[i]=l end end
+    for i,ed in ipairs(eds) do
+        local l=e.box3d[i]
+        if Cfg.Box3D then
+            local a=w2s(hrp.CFrame:PointToWorldSpace(cs[ed[1]]))
+            local b=w2s(hrp.CFrame:PointToWorldSpace(cs[ed[2]]))
+            if a and b then l.From=a l.To=b l.Visible=true l.Color=Cfg.Box3DColor else l.Visible=false end
+        else l.Visible=false end
+    end
+
+    local skel=hm.RigType==Enum.HumanoidRigType.R15 and SK15 or SK6
+    if #e.skeleton<#skel then for i=#e.skeleton+1,#skel do local l=d("Line") l.Thickness=1.5 l.Visible=false l.Color=Cfg.SkeletonColor e.skeleton[i]=l end end
+    for i,pair in ipairs(skel) do
+        local l=e.skeleton[i]
+        if Cfg.Skeleton then
+            local p1,p2=c:FindFirstChild(pair[1]),c:FindFirstChild(pair[2])
+            if p1 and p2 then
+                local a,b=w2s(p1.Position),w2s(p2.Position)
+                if a and b then l.From=a l.To=b l.Visible=true l.Color=Cfg.SkeletonColor else l.Visible=false end
+            else l.Visible=false end
+        else l.Visible=false end
+    end
+
+    e.line.Visible=Cfg.Line
+    if Cfg.Line then e.line.From=Vector2.new(Cam.ViewportSize.X/2,Cam.ViewportSize.Y) e.line.To=Vector2.new(x+w/2,y+h) e.line.Color=Cfg.LineColor end
+
+    local f=math.clamp(hm.Health/hm.MaxHealth,0,1) local col=hpCol(f)
+    e.hpVbg.Visible=Cfg.HealthBarVertical e.hpV.Visible=Cfg.HealthBarVertical
+    if Cfg.HealthBarVertical then
+        local bx=e.box2d.Position.X-6
+        e.hpVbg.Size=Vector2.new(3,h) e.hpVbg.Position=Vector2.new(bx,y)
+        local fh=h*f
+        e.hpV.Size=Vector2.new(3,fh) e.hpV.Position=Vector2.new(bx,y+h-fh) e.hpV.Color=col
+    end
+    e.hpHbg.Visible=Cfg.HealthBarHorizontal e.hpH.Visible=Cfg.HealthBarHorizontal
+    if Cfg.HealthBarHorizontal then
+        local by=y+h+4
+        e.hpHbg.Size=Vector2.new(w,3) e.hpHbg.Position=Vector2.new(x,by)
+        e.hpH.Size=Vector2.new(w*f,3) e.hpH.Position=Vector2.new(x,by) e.hpH.Color=col
+    end
+
+    e.headDot.Visible=Cfg.HeadDot
+    if Cfg.HeadDot then e.headDot.Position=Vector2.new(hs.X,hs.Y) e.headDot.Radius=3 e.headDot.Color=Cfg.BoxColor end
+
+    e.name.Visible=Cfg.NameTag
+    if Cfg.NameTag then e.name.Text=plr.DisplayName.." (@"..plr.Name..")" e.name.Position=Vector2.new(x+w/2,y-16) e.name.Color=Cfg.NameColor end
+
+    e.dist.Visible=Cfg.DistanceText
+    if Cfg.DistanceText then e.dist.Text=string.format("[%d studs]",math.floor(dist)) e.dist.Position=Vector2.new(x+w/2,y+h+6) e.dist.Color=Cfg.DistanceColor end
+
+    e.distX.Visible=Cfg.DistanceAxes e.distZ.Visible=Cfg.DistanceAxes
+    if Cfg.DistanceAxes then
+        e.distX.Text=string.format("X:%d",math.floor(math.abs(hrp.Position.X-mp.X))) e.distX.Position=Vector2.new(x+w/2,y+h+22)
+        e.distZ.Text=string.format("Z:%d",math.floor(math.abs(hrp.Position.Z-mp.Z))) e.distZ.Position=Vector2.new(x+w/2,y+h+34)
+    end
+
+    e.weapon.Visible=Cfg.WeaponText
+    if Cfg.WeaponText then
+        local tool=c:FindFirstChildOfClass("Tool")
+        if tool then e.weapon.Text=tool.Name e.weapon.Position=Vector2.new(x+w/2,y+h+50)
+        else e.weapon.Visible=false end
+    end
+end
+
+R.RenderStepped:Connect(function()
+    if not Cfg.Enabled then for _,e in pairs(esp) do hide(e) end return end
+    for _,plr in ipairs(P:GetPlayers()) do render(plr) end
+end)
+
+for _,plr in ipairs(P:GetPlayers()) do
+    plr.CharacterRemoving:Connect(function() local e=esp[plr] if e then hide(e) end end)
+end
+P.PlayerAdded:Connect(function(plr)
+    plr.CharacterRemoving:Connect(function() local e=esp[plr] if e then hide(e) end end)
+end)
+P.PlayerRemoving:Connect(killEsp)
+
+local fovC=d("Circle") fovC.Thickness=1 fovC.Filled=false fovC.Transparency=0.5 fovC.Color=Cfg.FOVColor
+R.RenderStepped:Connect(function()
+    fovC.Visible=Cfg.AimEnabled
+    if Cfg.AimEnabled then fovC.Position=U:GetMouseLocation() fovC.Radius=Cfg.AimFOV fovC.Color=Cfg.FOVColor end
+end)
+
+-- PANEL
+local parent=(gethui and gethui()) or C
+local old=parent:FindFirstChild("mica_dyy") if old then old:Destroy() end
+local gui=Instance.new("ScreenGui") gui.Name="mica_dyy" gui.ResetOnSpawn=false gui.IgnoreGuiInset=true gui.ZIndexBehavior=Enum.ZIndexBehavior.Sibling gui.DisplayOrder=999 gui.Parent=parent
+if protectgui then pcall(protectgui,gui) end
+if syn and syn.protect_gui then pcall(syn.protect_gui,gui) end
+
+local main=Instance.new("Frame")
+main.Size=UDim2.new(0,540,0,400) main.Position=UDim2.new(0.5,-270,0.5,-200)
+main.BackgroundColor3=Cfg.PanelBg main.BorderSizePixel=0 main.Active=true main.ClipsDescendants=true main.Parent=gui
+Instance.new("UICorner",main).CornerRadius=UDim.new(0,12)
+local st=Instance.new("UIStroke",main) st.Color=Cfg.PanelAccent st.Thickness=1.5 st.Transparency=0.3
+
+local drag,ds,sp
+main.InputBegan:Connect(function(i)
+    if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then
+        drag=true ds=i.Position sp=main.Position
+        i.Changed:Connect(function() if i.UserInputState==Enum.UserInputState.End then drag=false end end)
+    end
+end)
+U.InputChanged:Connect(function(i)
+    if drag and (i.UserInputType==Enum.UserInputType.MouseMovement or i.UserInputType==Enum.UserInputType.Touch) then
+        local dlt=i.Position-ds
+        main.Position=UDim2.new(sp.X.Scale,sp.X.Offset+dlt.X,sp.Y.Scale,sp.Y.Offset+dlt.Y)
+    end
+end)
+
+local sb=Instance.new("Frame") sb.Size=UDim2.new(0,60,1,0) sb.BackgroundTransparency=1 sb.Parent=main
+local lg=Instance.new("TextLabel") lg.Size=UDim2.new(1,0,0,60) lg.BackgroundTransparency=1 lg.Text="M" lg.TextColor3=Cfg.PanelAccent lg.Font=Enum.Font.GothamBold lg.TextSize=32 lg.Parent=sb
+local sl=Instance.new("Frame") sl.Size=UDim2.new(0,1,1,-20) sl.Position=UDim2.new(1,-1,0,10) sl.BackgroundColor3=Color3.fromRGB(40,20,60) sl.BorderSizePixel=0 sl.Parent=sb
+
+local hd=Instance.new("Frame") hd.Size=UDim2.new(1,-60,0,60) hd.Position=UDim2.new(0,60,0,0) hd.BackgroundTransparency=1 hd.Parent=main
+local tt=Instance.new("TextLabel") tt.Size=UDim2.new(0,220,1,0) tt.Position=UDim2.new(0,20,0,0) tt.BackgroundTransparency=1 tt.Text="MICA.DYY" tt.TextColor3=Color3.fromRGB(255,255,255) tt.Font=Enum.Font.GothamBlack tt.TextSize=22 tt.TextXAlignment=Enum.TextXAlignment.Left tt.Parent=hd
+local ts=Instance.new("UIStroke",tt) ts.Color=Cfg.PanelAccent ts.Thickness=1 ts.Transparency=0.5
+
+local cl=Instance.new("TextButton") cl.Size=UDim2.new(0,30,0,30) cl.Position=UDim2.new(1,-40,0.5,-15) cl.BackgroundTransparency=1 cl.Text="×" cl.TextColor3=Cfg.PanelTextDark cl.Font=Enum.Font.GothamBold cl.TextSize=24 cl.Parent=hd
+cl.MouseButton1Click:Connect(function() gui.Enabled=not gui.Enabled end)
+
+local body=Instance.new("Frame") body.Size=UDim2.new(1,-80,1,-80) body.Position=UDim2.new(0,70,0,70) body.BackgroundTransparency=1 body.Parent=main
+
+local function makeScroll(par)
+    local sf=Instance.new("ScrollingFrame")
+    sf.Size=UDim2.new(1,-10,1,-10) sf.Position=UDim2.new(0,5,0,5) sf.BackgroundTransparency=1 sf.BorderSizePixel=0
+    sf.ScrollBarThickness=2 sf.ScrollBarImageColor3=Cfg.PanelAccent sf.CanvasSize=UDim2.new(0,0,0,0) sf.AutomaticCanvasSize=Enum.AutomaticSize.Y sf.Parent=par
+    local ll=Instance.new("UIListLayout",sf) ll.Padding=UDim.new(0,6) ll.SortOrder=Enum.SortOrder.LayoutOrder
+    return sf
+end
+
+local lb=Instance.new("Frame") lb.Size=UDim2.new(0.5,-10,1,0) lb.BackgroundColor3=Cfg.PanelBox lb.BorderSizePixel=0 lb.Parent=body
+Instance.new("UICorner",lb).CornerRadius=UDim.new(0,10)
+local lbs=Instance.new("UIStroke",lb) lbs.Color=Color3.fromRGB(30,15,45) lbs.Thickness=1
+local lsc=makeScroll(lb)
+
+local rb=Instance.new("Frame") rb.Size=UDim2.new(0.5,-10,1,0) rb.BackgroundColor3=Cfg.PanelBox rb.BorderSizePixel=0 rb.Position=UDim2.new(0.5,10,0,0) rb.Parent=body
+Instance.new("UICorner",rb).CornerRadius=UDim.new(0,10)
+local rbs=Instance.new("UIStroke",rb) rbs.Color=Color3.fromRGB(30,15,45) rbs.Thickness=1
+local rsc=makeScroll(rb)
+
+local function section(txt,par,ord)
+    local l=Instance.new("TextLabel") l.Size=UDim2.new(1,0,0,24) l.BackgroundTransparency=1 l.Text=txt:upper() l.TextColor3=Cfg.PanelAccent l.Font=Enum.Font.GothamBold l.TextSize=11 l.TextXAlignment=Enum.TextXAlignment.Left l.LayoutOrder=ord l.Parent=par
+    return l
+end
+local function toggle(label,key,par,ord)
+    local r=Instance.new("Frame") r.Size=UDim2.new(1,0,0,28) r.BackgroundTransparency=1 r.LayoutOrder=ord r.Parent=par
+    local l=Instance.new("TextLabel") l.Size=UDim2.new(1,-40,1,0) l.BackgroundTransparency=1 l.Text=label l.TextColor3=Cfg.PanelText l.Font=Enum.Font.Gotham l.TextSize=12 l.TextXAlignment=Enum.TextXAlignment.Left l.Parent=r
+    local b=Instance.new("TextButton") b.Size=UDim2.new(0,28,0,16) b.Position=UDim2.new(1,-28,0.5,-8) b.BackgroundColor3=Cfg[key] and Cfg.PanelAccent or Color3.fromRGB(30,20,45) b.Text="" b.BorderSizePixel=0 b.Parent=r
+    Instance.new("UICorner",b).CornerRadius=UDim.new(1,0)
+    local dt=Instance.new("Frame") dt.Size=UDim2.new(0,10,0,10) dt.Position=Cfg[key] and UDim2.new(1,-13,0.5,-5) or UDim2.new(0,3,0.5,-5) dt.BackgroundColor3=Color3.fromRGB(255,255,255) dt.BorderSizePixel=0 dt.Parent=b
+    Instance.new("UICorner",dt).CornerRadius=UDim.new(1,0)
+    b.MouseButton1Click:Connect(function()
+        Cfg[key]=not Cfg[key]
+        b.BackgroundColor3=Cfg[key] and Cfg.PanelAccent or Color3.fromRGB(30,20,45)
+        dt.Position=Cfg[key] and UDim2.new(1,-13,0.5,-5) or UDim2.new(0,3,0.5,-5)
+    end)
+end
+local function slider(label,key,mn,mx,par,ord)
+    local r=Instance.new("Frame") r.Size=UDim2.new(1,0,0,38) r.BackgroundTransparency=1 r.LayoutOrder=ord r.Parent=par
+    local l=Instance.new("TextLabel") l.Size=UDim2.new(1,0,0,14) l.BackgroundTransparency=1 l.Text=label..": "..tostring(Cfg[key]) l.TextColor3=Cfg.PanelText l.Font=Enum.Font.Gotham l.TextSize=12 l.TextXAlignment=Enum.TextXAlignment.Left l.Parent=r
+    local tr=Instance.new("Frame") tr.Size=UDim2.new(1,-10,0,4) tr.Position=UDim2.new(0,0,0,22) tr.BackgroundColor3=Color3.fromRGB(30,20,45) tr.BorderSizePixel=0 tr.Parent=r
+    Instance.new("UICorner",tr).CornerRadius=UDim.new(1,0)
+    local fl=Instance.new("Frame") fl.Size=UDim2.new((Cfg[key]-mn)/(mx-mn),0,1,0) fl.BackgroundColor3=Cfg.PanelAccent fl.BorderSizePixel=0 fl.Parent=tr
+    Instance.new("UICorner",fl).CornerRadius=UDim.new(1,0)
+    local drg=false
+    local function setX(mx_)
+        local ax=tr.AbsolutePosition.X local w=tr.AbsoluteSize.X
+        local f=math.clamp((mx_-ax)/w,0,1) local v=math.floor(mn+f*(mx-mn))
+        Cfg[key]=v l.Text=label..": "..tostring(v) fl.Size=UDim2.new(f,0,1,0)
+    end
+    tr.InputBegan:Connect(function(i) if i.UserInputType==Enum.UserInputType.MouseButton1 then drg=true setX(i.Position.X) end end)
+    U.InputChanged:Connect(function(i) if drg and i.UserInputType==Enum.UserInputType.MouseMovement then setX(i.Position.X) end end)
+    U.InputEnded:Connect(function(i) if i.UserInputType==Enum.UserInputType.MouseButton1 then drg=false end end)
+end
+
+local o=1
+section("ESP",lsc,o) o=o+1
+for _,v in ipairs({{"Enabled","Enabled"},{"Team Check","TeamCheck"},{"Visible Check","VisibleCheck"},{"Box 2D","Box2D"},{"Box 3D","Box3D"},{"Skeleton","Skeleton"},{"Line","Line"},{"Fill Box","FillBox"},{"Head Dot","HeadDot"},{"Health V","HealthBarVertical"},{"Health H","HealthBarHorizontal"},{"Name Tag","NameTag"},{"Distance","DistanceText"},{"Distance Axes","DistanceAxes"},{"Weapon","WeaponText"}}) do
+    toggle(v[1],v[2],lsc,o) o=o+1
+end
+slider("Max Distance","MaxDistance",0,3000,lsc,o)
+
+o=1
+section("AIMBOT",rsc,o) o=o+1
+for _,v in ipairs({{"Enable Aimbot","AimEnabled"},{"Wall Check","AimWallCheck"},{"Visible Only","AimVisibleOnly"}}) do
+    toggle(v[1],v[2],rsc,o) o=o+1
+end
+slider("FOV","AimFOV",10,500,rsc,o) o=o+1
+slider("Smooth %","AimSmooth",0,100,rsc,o) o=o+1
+slider("Prediction","AimPrediction",0,100,rsc,o) o=o+1
+
+Cfg.AimSmooth = Cfg.AimSmooth/100
+Cfg.AimPrediction = Cfg.AimPrediction/100
+
+_G.MicaDyy = {Destroy=function()
+    for plr in pairs(esp) do killEsp(plr) end
+    if fovC then fovC:Remove() end
+    if gui then gui:Destroy() end
+end}
